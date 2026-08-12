@@ -1,0 +1,17 @@
+[Unit]
+Description=PopStore Platform API
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/popstore/backend
+Environment=PATH=/opt/popstore/venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=SECRET_KEY=change-this-to-a-random-secret-key
+Environment=DATABASE_URL=sqlite:///./data/popstore.db
+ExecStart=/opt/popstore/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,44 @@
+# PopStore Platform — 绿联云 NAS Docker 部署
+# ----------------------------------------------------------------------------
+# 部署步骤：
+#   1) 把整个 popstore-docker 目录上传 / 复制到绿联云 NAS（如 /volume1/docker/popstore）
+#   2) 按下方注释修改 backend.environment（至少改 SECRET_KEY 与管理员密码）
+#   3) 绿联云 Docker → 项目 / Compose → 创建，选择本目录的 compose.yml 即可；
+#      若 NAS 不支持 Compose，按 README「无 Compose」小节分别建容器
+#   4) 浏览器访问 http://<NAS局域网IP>:8080  （管理后台）
+#      后端 API：http://<NAS局域网IP>:8000
+#
+# 数据持久化：容器 /app/data 映射到 NAS 目录（务必用真实绝对路径，方便备份/迁移）
+# ----------------------------------------------------------------------------
+
+services:
+  backend:
+    build: ./backend
+    container_name: popstore-backend
+    restart: unless-stopped
+    ports:
+      # 左边是 NAS 外部访问端口，右边容器固定 8000；如需改外部端口只改左边
+      - "8000:8000"
+    environment:
+      - TZ=Asia/Shanghai
+      - DEBUG=false                       # 生产环境务必 false
+      - DATABASE_URL=sqlite:///./data/popstore.db
+      - UPLOAD_DIR=/app/data/uploads
+      # ↓↓↓ 请务必改成你自己的强随机串（生成：openssl rand -hex 32）↓↓↓
+      - SECRET_KEY=change-me-to-a-long-random-string
+      - DEFAULT_ADMIN_USERNAME=admin
+      # ↓↓↓ 请修改默认管理员密码（默认 admin123 不安全）↓↓↓
+      - DEFAULT_ADMIN_PASSWORD=change-this-password
+    volumes:
+      # 绿联云：把左边改成你的共享目录真实绝对路径，例如 /volume1/docker/popstore/data
+      - ./data:/app/data
+
+  frontend:
+    build: ./admin-frontend
+    container_name: popstore-frontend
+    restart: unless-stopped
+    ports:
+      # 外部访问端口 8080 → 容器内 nginx 80
+      - "8080:80"
+    depends_on:
+      - backend

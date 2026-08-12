@@ -1,0 +1,92 @@
+<view class="container">
+  <!-- 顶部标题 -->
+  <view class="hd">
+    <view class="hd-title">🎏 快闪日历</view>
+    <view class="hd-sub">左右滑动切换月份 · 点日期看当天快闪</view>
+  </view>
+
+  <!-- 月历 -->
+  <view class="cal" bindtouchstart="onTouchStart" bindtouchend="onTouchEnd">
+    <view class="cal-hd">
+      <text class="cal-nav {{canPrev ? '' : 'disabled'}}" bindtap="prevMonth">‹</text>
+      <text class="cal-label">{{monthLabel}}</text>
+      <text class="cal-nav {{canNext ? '' : 'disabled'}}" bindtap="nextMonth">›</text>
+      <text class="cal-today" bindtap="goToday">今天</text>
+    </view>
+
+    <view class="cal-week">
+      <text class="cal-wd" wx:for="{{['日','一','二','三','四','五','六']}}" wx:key="*this">{{item}}</text>
+    </view>
+
+    <view class="cal-grid">
+      <view class="cal-weekrow" wx:for="{{weeks}}" wx:for-item="week" wx:key="index" style="height:{{week.rowHeight}}">
+        <!-- 7 个日期格子 -->
+        <view class="cal-cell"
+          wx:for="{{week.days}}"
+          wx:for-item="cell"
+          wx:key="dateStr"
+          data-date="{{cell.dateStr}}"
+          data-color="{{cell.primaryColor}}"
+          bindtap="selectDay"
+        >
+          <view wx:if="{{cell.day}}" class="cal-day {{cell.isToday ? 'today' : ''}} {{cell.hasEvent ? 'evt' : ''}} {{cell.inMonth ? '' : 'out'}}">
+            <text class="cal-num">{{cell.day}}</text>
+            <view class="cal-ring" wx:if="{{cell.selected}}" style="border-color:{{cell.primaryColor}}"></view>
+          </view>
+          <view wx:else class="cal-day empty"></view>
+        </view>
+
+        <!-- 本周持续线：覆盖在格子上 -->
+        <view class="cal-bars" wx:if="{{week.bars.length}}">
+          <view
+            class="cal-bar"
+            wx:for="{{week.bars}}"
+            wx:for-item="bar"
+            wx:key="storeId"
+            style="left:{{bar.left}};width:{{bar.width}};background:{{bar.color}};top:{{bar.top}}"
+            data-id="{{bar.storeId}}"
+            bindtap="goDetail"
+          >
+            <text class="cal-bar-title" wx:if="{{bar.showTitle}}">{{bar.title}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 选中日期提示条 -->
+  <view class="selbar" wx:if="{{selectedDate}}">
+    <text>📌 {{selectedDate}} 的快闪（{{visibleStores.length}}）</text>
+    <text class="sel-clear" bindtap="clearSelect">查看整月 ✕</text>
+  </view>
+
+  <!-- 当月 / 当天快闪列表 -->
+  <view class="section-head">
+    {{selectedDate ? selectedDate + ' 当天' : '本月快闪'}}（{{visibleStores.length}}）
+  </view>
+  <view class="store-list">
+    <view
+      class="store-card"
+      wx:for="{{visibleStores}}"
+      wx:key="id"
+      bindtap="goDetail"
+      data-id="{{item.id}}"
+      style="border-left:8rpx solid {{item.color}}"
+    >
+      <image wx:if="{{item.cover}}" src="{{item.cover}}" mode="aspectFill" class="card-img" />
+      <view wx:else class="card-img card-img--empty">🎌</view>
+      <view class="card-info">
+        <text class="card-title">{{item.title}}</text>
+        <text class="card-desc" wx:if="{{item.cityText}}">📍 {{item.cityText}}</text>
+        <view class="card-meta">
+          <text class="card-date">📅 {{item.dateText}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!loading && visibleStores.length === 0}}">
+    <text>{{selectedDate ? '这一天没有快闪店 🎌' : '本月暂无快闪店 🎌'}}</text>
+  </view>
+  <view class="load-more" wx:if="{{loading}}"><text>加载中...</text></view>
+</view>

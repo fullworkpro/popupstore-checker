@@ -1,0 +1,17 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+sqlalchemy==2.0.23
+pydantic[email]==2.5.2
+pydantic-settings==2.1.0
+python-jose[cryptography]==3.3.0
+# 仅用 bcrypt 直接哈希（security.py 已不依赖 passlib），避免 passlib 1.7.4 与 bcrypt>=4.1 不兼容导致启动崩溃
+bcrypt==4.0.1
+python-multipart==0.0.6
+httpx==0.25.2
+beautifulsoup4==4.12.2
+lxml==4.9.3
+requests==2.31.0
+aiofiles==23.2.1
+Pillow==10.1.0
+slowapi==0.1.9
+apscheduler==3.10.4

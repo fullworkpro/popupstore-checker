@@ -1,0 +1,60 @@
+<view class="container">
+  <!-- 搜索栏 -->
+  <view class="search-bar">
+    <input
+      class="search-input"
+      placeholder="搜索快闪店..."
+      value="{{keyword}}"
+      bindinput="onSearchInput"
+      bindconfirm="onSearch"
+    />
+  </view>
+
+  <!-- 标签筛选 -->
+  <scroll-view scroll-x class="tag-bar" wx:if="{{tags.length > 0}}">
+    <view class="tag-item {{activeTag === '' ? 'active' : ''}}" bindtap="filterTag" data-tag="">全部</view>
+    <view
+      wx:for="{{tags}}"
+      wx:key="name"
+      class="tag-item {{activeTag === item.name ? 'active' : ''}}"
+      bindtap="filterTag"
+      data-tag="{{item.name}}"
+    >{{item.name}}({{item.count}})</view>
+  </scroll-view>
+
+  <!-- 排序 -->
+  <view class="sort-bar">
+    <view class="sort-item {{sort === 'newest' ? 'active' : ''}}" bindtap="changeSort" data-sort="newest">最新</view>
+    <view class="sort-item {{sort === 'hottest' ? 'active' : ''}}" bindtap="changeSort" data-sort="hottest">最热</view>
+    <view class="sort-item {{sort === 'ending_soon' ? 'active' : ''}}" bindtap="changeSort" data-sort="ending_soon">即将结束</view>
+  </view>
+
+  <!-- 列表 -->
+  <view class="store-list">
+    <view
+      class="store-card"
+      wx:for="{{stores}}"
+      wx:key="id"
+      bindtap="goDetail"
+      data-id="{{item.id}}"
+    >
+      <image wx:if="{{item.cover}}" src="{{item.cover}}" mode="aspectFill" class="card-img" />
+      <view wx:else class="card-img card-img--empty">🎌</view>
+      <view class="card-info">
+        <text class="card-title">{{item.title}}</text>
+        <text class="card-desc" wx:if="{{item.subtitle}}">{{item.subtitle}}</text>
+        <view class="card-meta">
+          <text class="card-city" wx:if="{{item.cityText}}">📍 {{item.cityText}}</text>
+          <text class="card-views">👁 {{item.view_count || 0}}</text>
+        </view>
+        <view class="card-tags" wx:if="{{item.tagList.length > 0}}">
+          <text class="tag" wx:for="{{item.tagList}}" wx:key="*this" wx:for-item="t">{{t}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="load-more" wx:if="{{loading}}"><text>加载中...</text></view>
+  <view class="load-more" wx:if="{{!loading && stores.length > 0 && noMore}}"><text>— 已经到底了 —</text></view>
+  <view class="empty" wx:if="{{!loading && stores.length === 0}}"><text>没有找到相关快闪店 🔍</text></view>
+</view>

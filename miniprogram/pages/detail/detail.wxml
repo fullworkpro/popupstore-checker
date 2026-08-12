@@ -1,0 +1,101 @@
+<view class="container">
+  <!-- 图片轮播：多图时以 slide 形式展示 -->
+  <swiper
+    class="img-swiper"
+    indicator-dots
+    autoplay="{{images.length > 1}}"
+    circular="{{images.length > 1}}"
+    wx:if="{{images.length > 0}}"
+  >
+    <swiper-item wx:for="{{images}}" wx:key="*this">
+      <image src="{{item}}" mode="aspectFit" class="swiper-img" bindtap="openViewer" data-src="{{item}}" />
+    </swiper-item>
+  </swiper>
+  <image wx:elif="{{store.cover_image}}" src="{{store.cover_image}}" mode="aspectFit" class="hero-img" bindtap="openViewer" data-src="{{store.cover_image}}" />
+  <view wx:else class="hero-placeholder">🎌</view>
+
+  <!-- 内容 -->
+  <view class="content">
+    <text class="title">{{store.title}}</text>
+    <text class="subtitle" wx:if="{{store.subtitle}}">{{store.subtitle}}</text>
+
+    <!-- 标签 -->
+    <view class="tags" wx:if="{{tagList.length > 0}}">
+      <text class="tag" wx:for="{{tagList}}" wx:key="*this">{{item}}</text>
+    </view>
+
+    <!-- 基本信息 -->
+    <view class="info-card">
+      <!-- 多城市 -->
+      <block wx:if="{{cities.length > 0}}">
+        <view class="info-row" wx:for="{{cities}}" wx:key="index" wx:if="{{item.city || item.address}}">
+          <text class="info-label">📍 地点{{cities.length > 1 ? index + 1 : ''}}</text>
+          <text class="info-value">{{item.city}}{{item.district ? '·' + item.district : ''}}<text wx:if="{{item.address}}"> · {{item.address}}</text></text>
+        </view>
+      </block>
+      <!-- 兼容旧数据（单城市） -->
+      <block wx:else>
+        <view class="info-row" wx:if="{{store.city}}">
+          <text class="info-label">📍 地点</text>
+          <text class="info-value">{{store.city}}{{store.district ? '·' + store.district : ''}}</text>
+        </view>
+        <view class="info-row" wx:if="{{store.address}}">
+          <text class="info-label">🏠 地址</text>
+          <text class="info-value">{{store.address}}</text>
+        </view>
+      </block>
+
+      <view class="info-row" wx:if="{{store.start_date || store.end_date}}">
+        <text class="info-label">📅 时间</text>
+        <text class="info-value">{{dateText}}</text>
+      </view>
+      <view class="info-row" wx:if="{{store.organizer}}">
+        <text class="info-label">🎯 主办方</text>
+        <text class="info-value">{{store.organizer}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">🎟 预约</text>
+        <text class="info-value">{{reservationLabel}}</text>
+      </view>
+    </view>
+
+    <!-- 描述 -->
+    <view class="desc-card" wx:if="{{store.description}}">
+      <text class="section-title">活动详情</text>
+      <text class="desc-text">{{store.description}}</text>
+    </view>
+
+    <!-- 统计 -->
+    <view class="stats">
+      <text>👁 {{store.view_count || 0}} 次浏览</text>
+    </view>
+  </view>
+
+  <!-- 操作栏：收藏 + 分享 -->
+  <view class="action-bar">
+    <view class="fav-btn {{isFav ? 'active' : ''}}" bindtap="toggleFav">
+      <text class="fav-icon">{{isFav ? '★' : '☆'}}</text>
+      <text>{{isFav ? '已收藏' : '收藏'}}</text>
+    </view>
+    <button open-type="share" class="share-inner">分享给好友</button>
+  </view>
+
+  <!-- 全屏看图：点击题图放大，双指缩放，默认比例点击关闭 -->
+  <view class="img-viewer" wx:if="{{viewerShow}}" bindtap="closeViewer">
+    <movable-area class="viewer-area" scale-area="true">
+      <movable-view
+        class="viewer-box"
+        direction="all"
+        scale
+        scale-min="1"
+        scale-max="4"
+        bindscale="onViewerScale"
+      >
+        <view class="viewer-inner">
+          <image src="{{viewerSrc}}" mode="widthFix" class="viewer-img" bindtap="onViewerImgTap" />
+        </view>
+      </movable-view>
+    </movable-area>
+    <view class="viewer-tip">轻点关闭 · 双指缩放</view>
+  </view>
+</view>

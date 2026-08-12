@@ -1,0 +1,57 @@
+/**
+ * WXS 日期格式化模块
+ * 注意：小程序 WXML 不能直接调用 Page 方法，必须在 WXS 里格式化日期。
+ *
+ * 重要：微信 WXS 的 getDate(str) 对带 "T" 的 ISO 串（如 2026-08-17T00:00:00）
+ * 在不同基础库版本下解析不稳定，容易抛错导致整段 WXML 渲染崩溃（页面空白）。
+ * 因此这里手动解析，绝不依赖 getDate 的字符串解析能力，只用 getDate 的
+ * 数值构造形式 getDate(y, m, d, h, min, s)。
+ */
+function pad(n) {
+  if (n < 10) return '0' + n
+  return '' + n
+}
+
+// 手动解析 ISO 日期串，返回 Date 对象；失败返回 null
+function parseDate(str) {
+  if (!str) return null
+  var s = '' + str
+  var parts = s.split('T')
+  var datePart = parts[0]
+  var timePart = parts[1] || ''
+
+  // 去掉时区后缀（+08:00 / Z），只保留本地时间部分
+  var cut = timePart.length
+  var p = timePart.indexOf('+')
+  var z = timePart.indexOf('Z')
+  if (p >= 0) cut = p < cut ? p : cut
+  if (z >= 0) cut = z < cut ? z : cut
+  timePart = timePart.substring(0, cut)
+
+  var d = datePart.split('-')
+  var t = timePart.split(':')
+  var Y = parseInt(d[0], 10)
+  var M = parseInt(d[1], 10) - 1
+  var D = parseInt(d[2], 10)
+  var h = parseInt(t[0], 10) || 0
+  var m = parseInt(t[1], 10) || 0
+  if (isNaN(Y) || isNaN(M) || isNaN(D)) return null
+  return getDate(Y, M, D, h, m, 0)
+}
+
+function formatDate(str) {
+  var dt = parseDate(str)
+  if (!dt) return ''
+  return dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate())
+}
+
+function formatDateTime(str) {
+  var dt = parseDate(str)
+  if (!dt) return ''
+  return formatDate(str) + ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes())
+}
+
+module.exports = {
+  formatDate: formatDate,
+  formatDateTime: formatDateTime,
+}

@@ -1,0 +1,40 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/list/list",
+    "pages/detail/detail",
+    "pages/favorite/favorite"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#6C5CE7",
+    "navigationBarTitleText": "二次元快闪",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#f5f5f5"
+  },
+  "tabBar": {
+    "color": "#999",
+    "selectedColor": "#6C5CE7",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页",
+        "iconPath": "images/home.png",
+        "selectedIconPath": "images/home-active.png"
+      },
+      {
+        "pagePath": "pages/list/list",
+        "text": "发现",
+        "iconPath": "images/discover.png",
+        "selectedIconPath": "images/discover-active.png"
+      },
+      {
+        "pagePath": "pages/favorite/favorite",
+        "text": "收藏",
+        "iconPath": "images/favorite.png",
+        "selectedIconPath": "images/favorite-active.png"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

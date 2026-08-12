@@ -1,0 +1,96 @@
+.container {
+  padding-bottom: 20rpx;
+}
+.store-list {
+  padding: 20rpx 24rpx;
+}
+.store-card {
+  position: relative;
+  background: #fff;
+  border-radius: 16rpx;
+  overflow: hidden;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0,0,0,.06);
+}
+.card-img {
+  width: 100%;
+  height: 320rpx;
+  background: #eee;
+}
+.card-img--empty {
+  width: 100%;
+  height: 320rpx;
+  background: linear-gradient(135deg, #a18cd1, #fbc2eb);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 64rpx;
+  color: #fff;
+}
+.card-info {
+  padding: 20rpx 24rpx;
+}
+.card-title {
+  font-size: 30rpx;
+  font-weight: bold;
+  color: #333;
+}
+.card-desc {
+  font-size: 24rpx;
+  color: #999;
+  margin-top: 8rpx;
+  display: block;
+}
+.card-meta {
+  margin-top: 12rpx;
+  display: flex;
+  gap: 20rpx;
+}
+.card-city, .card-date {
+  font-size: 22rpx;
+  color: #888;
+}
+.card-tags {
+  margin-top: 12rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+}
+.tag {
+  padding: 4rpx 16rpx;
+  background: #f0e8ff;
+  color: #6C5CE7;
+  font-size: 20rpx;
+  border-radius: 8rpx;
+}
+.fav-remove {
+  position: absolute;
+  top: 16rpx;
+  right: 16rpx;
+  padding: 6rpx 18rpx;
+  background: rgba(0,0,0,.45);
+  color: #fff;
+  font-size: 22rpx;
+  border-radius: 30rpx;
+}
+.empty {
+  text-align: center;
+  padding: 80rpx 40rpx;
+  color: #999;
+}
+.empty-emoji {
+  font-size: 28rpx;
+  color: #666;
+}
+.empty-sub {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: #999;
+  line-height: 1.7;
+}
+.load-more {
+  text-align: center;
+  padding: 40rpx;
+  color: #999;
+  font-size: 26rpx;
+}

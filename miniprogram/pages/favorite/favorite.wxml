@@ -1,0 +1,32 @@
+<view class="container">
+  <view class="store-list">
+    <view
+      class="store-card"
+      wx:for="{{stores}}"
+      wx:key="id"
+      bindtap="goDetail"
+      data-id="{{item.id}}"
+    >
+      <image wx:if="{{item.cover}}" src="{{item.cover}}" mode="aspectFill" class="card-img" />
+      <view wx:else class="card-img card-img--empty">🎌</view>
+      <view class="card-info">
+        <text class="card-title">{{item.title}}</text>
+        <text class="card-desc" wx:if="{{item.subtitle}}">{{item.subtitle}}</text>
+        <view class="card-meta">
+          <text class="card-city" wx:if="{{item.cityText}}">📍 {{item.cityText}}</text>
+          <text class="card-date" wx:if="{{item.dateText}}">📅 {{item.dateText}}</text>
+        </view>
+        <view class="card-tags" wx:if="{{item.tagList.length > 0}}">
+          <text class="tag" wx:for="{{item.tagList}}" wx:key="*this" wx:for-item="t">{{t}}</text>
+        </view>
+      </view>
+      <view class="fav-remove" catchtap="toggleFav" data-id="{{item.id}}">取消收藏</view>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!loading && stores.length === 0}}">
+    <view class="empty-emoji">还没有收藏的快闪店 💔</view>
+    <view class="empty-sub">去首页逛逛，点开详情后点「收藏」即可加入这里</view>
+  </view>
+  <view class="load-more" wx:if="{{loading}}"><text>加载中...</text></view>
+</view>
