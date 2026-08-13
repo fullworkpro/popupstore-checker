@@ -1,7 +1,9 @@
 """FastAPI 应用入口"""
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
@@ -66,3 +68,25 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """422 参数校验失败时，把具体失败字段 + 收到的请求体打到日志，便于排障。"""
+    try:
+        raw = await request.body()
+        body_str = raw.decode("utf-8", "replace")
+    except Exception:
+        body_str = "<无法读取请求体>"
+    logger.error("❌ 422 参数校验失败 | %s %s", request.method, request.url.path)
+    logger.error("   收到的请求体: %s", body_str[:3000])
+    for e in exc.errors():
+        loc = ".".join(str(x) for x in e.get("loc", []))
+        logger.error(
+            "   字段[%s] -> %s (type=%s, input=%r)",
+            loc,
+            e.get("msg"),
+            e.get("type"),
+            e.get("input"),
+        )
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
