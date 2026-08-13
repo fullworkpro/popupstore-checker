@@ -2,6 +2,20 @@
 from pydantic import BaseModel, Field, validator
 from typing import Optional, List
 from datetime import datetime
+import re
+
+# 纯日期 YYYY-MM-DD 检测（前端日期选择器回传的格式）
+_DATE_ONLY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _normalize_date_value(v):
+    """前端日期选择器回传纯日期 'YYYY-MM-DD'，后端字段是 datetime，需补零时刻
+    转成 'YYYY-MM-DDT00:00:00' 才能被 pydantic 解析；空串/None 统一转 None。"""
+    if v is None or v == "" or v == "null":
+        return None
+    if isinstance(v, str) and _DATE_ONLY_RE.match(v):
+        return v + "T00:00:00"
+    return v
 
 
 # ── 认证 ──
@@ -46,13 +60,11 @@ class StoreBase(BaseModel):
     def _norm_reservation(cls, v):
         return v if v in ("required", "advance", "no") else "no"
 
-    # 日期选择器在清空时可能回传空串 ""，pydantic 无法解析为 datetime → 422。
-    # 这里在解析前把空串/None 统一转成 None，避免新增/编辑快闪店因空日期失败。
+    # 前端日期选择器回传纯日期 "YYYY-MM-DD"，后端字段是 datetime，
+    # 需补零时刻转为 "YYYY-MM-DDT00:00:00"；空串/None 统一转 None。
     @validator("start_date", "end_date", pre=True)
-    def _empty_date_to_none(cls, v):
-        if v is None or v == "" or v == "null":
-            return None
-        return v
+    def _normalize_dates(cls, v):
+        return _normalize_date_value(v)
 
 
 class StoreCreate(StoreBase):
@@ -78,6 +90,10 @@ class StoreUpdate(BaseModel):
     tags: Optional[str] = None
     source: Optional[str] = None
     source_url: Optional[str] = None
+
+    @validator("start_date", "end_date", pre=True)
+    def _normalize_dates_update(cls, v):
+        return _normalize_date_value(v)
 
     @validator("reservation")
     def _check_reservation(cls, v):
