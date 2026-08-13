@@ -82,7 +82,20 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    # 顺带探一下数据库连通性：若 DB 在 NAS 网络卷上锁死，这里会直接暴露
+    db_status = "ok"
+    try:
+        from app.core.database import SessionLocal
+        from sqlalchemy import text
+
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+        finally:
+            db.close()
+    except Exception as e:
+        db_status = f"db_error: {e}"
+    return {"status": "ok", "db": db_status}
 
 
 @app.exception_handler(RequestValidationError)

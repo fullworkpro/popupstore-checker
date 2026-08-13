@@ -28,17 +28,14 @@ const request = (url, options = {}) => {
 }
 
 // 解析图片地址：
-//  - 外链（http/https 开头）走后端同源代理 /api/v1/proxy-image，
-//    绕过目标站防盗链与微信 downloadFile 合法域名限制（release 环境生效；
-//    trial 局域网环境因微信不允许配置局域网域名为合法域名，外链图仍可能受限）
+//  - 外链（http/https 开头）【直连】目标站，不经过 NAS 代理，多人访问不占 NAS 上行带宽；
+//    （若正式版外链图加载失败，需在小程序后台「服务器域名」配置对应图片域名为合法域名）
 //  - 相对路径（如 /static/2026/08/12/xx.jpg，后端上传图存的就是这种）自动拼上后端主机，
 //    这样小程序端也能正确加载（小程序无法解析无主机的相对路径）
 const resolveImage = (url) => {
   if (!url) return ''
   if (/^https?:\/\//.test(url)) {
-    const apiBase = (getApp().globalData && getApp().globalData.apiBase) || ''
-    const base = apiBase.replace(/\/api\/v1\/?$/, '')
-    return base + '/api/v1/proxy-image?url=' + encodeURIComponent(url)
+    return url
   }
   const apiBase = (getApp().globalData && getApp().globalData.apiBase) || ''
   const base = apiBase.replace(/\/api\/v1\/?$/, '')

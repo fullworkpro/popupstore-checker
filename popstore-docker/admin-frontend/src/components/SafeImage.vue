@@ -17,7 +17,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { Picture } from '@element-plus/icons-vue'
-import { resolveImage } from '../utils/image'
+import { resolveImage, proxyImageUrl } from '../utils/image'
 
 const props = defineProps({
   src: { type: String, default: '' },
@@ -27,10 +27,22 @@ const props = defineProps({
 })
 
 const raw = computed(() => props.src || '')
-const resolved = computed(() => resolveImage(raw.value))
+const override = ref('')
+const resolved = computed(() => override.value || resolveImage(raw.value))
 const errored = ref(false)
+const triedProxy = ref(false)
 
 function onError() {
+  // 外链直连失败 -> 自动回退到同源代理（绕过防盗链/跨域），仅回退一次
+  if (
+    !triedProxy.value &&
+    /^https?:\/\//i.test(raw.value) &&
+    !String(raw.value).startsWith('/api/v1/proxy-image')
+  ) {
+    triedProxy.value = true
+    override.value = proxyImageUrl(raw.value)
+    return
+  }
   errored.value = true
 }
 function onLoad() {
