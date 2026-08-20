@@ -44,8 +44,8 @@ popstore-docker/
 
 ## 四、端口（在 `compose.yml` 的 `ports` 段）
 
-- 后端：`8000:8000` → NAS 外部访问端口是左边的 `8000`（如需改外部端口只改左边，如 `"9000:8000"`）
-- 前端：`8080:80` → 管理后台通过 `http://<NAS_IP>:8080` 访问
+- 后端：`9114:8000` → NAS 外部访问端口是左边的 `9114`（如需改外部端口只改左边，如 `"9000:8000"`）
+- 前端：`9115:80` → 管理后台通过 `http://<NAS_IP>:9115` 访问
 - 在绿联云 Docker 的「端口管理」里确认这两个端口已映射；要在手机/外网访问，还需在路由器做端口转发（或用 NAS 的远程访问 / 反代）。
 
 ## 五、数据持久化
@@ -60,9 +60,9 @@ volumes:
 - `./data` 是相对路径（在 compose.yml 同目录下自动建 `data/` 文件夹）。
 - **建议改成绿联云共享目录的真实绝对路径**，例如：
   ```yaml
-  - /volume1/docker/popstore/data:/app/data
+  - /volume1/docker/popstore-platform/data:/app/data
   ```
-  这样数据库（`popstore.db`）和上传图片（`uploads/`）都落在你能直接备份/迁移的位置，删容器、更镜像都不丢数据。
+  这样数据库（`popstore.db`）和上传图片（`uploads/`）都落在你能直接备份/迁移的位置，删容器、更镜像都不丢数据。当前示例路径为 `/volume1/docker/popstore-platform/data`。
 
 ## 六、用绿联云 Docker 部署
 
@@ -70,20 +70,20 @@ volumes:
 1. 把 `popstore-docker/` 传到 NAS（如 `/volume1/docker/popstore/`）。
 2. 绿联云 Docker → **项目**（或「Compose」）→ 创建项目 → 选择该目录 → 选 `compose.yml` → 确定。
 3. 系统会自动 `build` 两个镜像并启动两个容器。
-4. 浏览器打开 `http://<NAS_IP>:8080`，用 `admin` / 你设的密码登录。
+4. 浏览器打开 `http://<NAS_IP>:9115`，用 `admin` / 你设的密码登录。
 
 ### 方案 B：不支持 Compose 的旧版
 1. 分别构建镜像：
    - 进 `backend/` 目录：`docker build -t popstore-backend .`
    - 进 `admin-frontend/` 目录：`docker build -t popstore-frontend .`
 2. 在图形界面创建两个容器，依据 `compose.yml` 配：端口映射、环境变量（见第三节）、卷映射（见第五节）。
-3. 启动后访问 `http://<NAS_IP>:8080`。
+3. 启动后访问 `http://<NAS_IP>:9115`。
 
 ## 七、小程序连接（重要，非 Docker 部署范围但需配合）
 
 小程序正式环境要能访问刚部署的后端，请在 `miniprogram/app.js` 修改 `apiBase`：
 
-- **体验版 / 开发版**（仅局域网）：`http://<NAS局域网IP>:8000/api/v1`
+- **体验版 / 开发版**（仅局域网）：`http://<NAS局域网IP>:9114/api/v1`
 - **正式版**：必须 HTTPS。在 NAS 或反向代理（如 Nginx/Caddy）上为域名配置证书，改成 `https://你的域名/api/v1`，并在微信公众平台「开发管理 → 服务器域名」里把该域名加入 **request 合法域名** 与 **downloadFile 合法域名**。
 - 上传的图片走 `/static/...`，与后端同域，无需额外配置。
 
