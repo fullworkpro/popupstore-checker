@@ -5,6 +5,7 @@
     "pages/detail/detail",
     "pages/favorite/favorite"
   ],
+  "lazyCodeLoading": "requiredComponents",
   "window": {
     "navigationBarBackgroundColor": "#6C5CE7",
     "navigationBarTitleText": "二次元快闪",
