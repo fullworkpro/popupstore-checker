@@ -17,11 +17,12 @@ services:
     container_name: popstore-backend
     restart: unless-stopped
     ports:
-      # 左边是 NAS 外部访问端口，右边容器固定 8000；如需改外部端口只改左边
-      - "8000:8000"
+      # 左边是 NAS 外部访问端口，右边容器固定 8000
+      - "9114:8000"
     environment:
       - TZ=Asia/Shanghai
       - DEBUG=false                       # 生产环境务必 false
+      # SQLite 与上传图片都落在 /app/data（绑定到下方 NAS 共享目录）
       - DATABASE_URL=sqlite:///./data/popstore.db
       - UPLOAD_DIR=/app/data/uploads
       # ↓↓↓ 请务必改成你自己的强随机串（生成：openssl rand -hex 32）↓↓↓
@@ -30,15 +31,15 @@ services:
       # ↓↓↓ 请修改默认管理员密码（默认 admin123 不安全）↓↓↓
       - DEFAULT_ADMIN_PASSWORD=change-this-password
     volumes:
-      # 绿联云：把左边改成你的共享目录真实绝对路径，例如 /volume1/docker/popstore/data
-      - ./data:/app/data
+      # 绿联云：左边改成你的共享目录真实绝对路径
+      - /volume1/docker/popstore-platform/data:/app/data
 
   frontend:
     build: ./admin-frontend
     container_name: popstore-frontend
     restart: unless-stopped
     ports:
-      # 外部访问端口 8080 → 容器内 nginx 80
-      - "8080:80"
+      # 外部访问端口 9115 → 容器内 nginx 80
+      - "9115:80"
     depends_on:
       - backend

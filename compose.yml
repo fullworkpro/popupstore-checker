@@ -4,7 +4,7 @@
 #   2) 管理后台访问 http://<NAS_IP>:8080
 #   3) 后端 API 访问 http://<NAS_IP>:8000  （小程序正式环境需套 HTTPS 反代）
 #
-# 数据持久化：popstore-data 卷同时保存 SQLite 数据库与上传的图片。
+# 数据持久化：popstore-data 卷（或下方 bind 挂载的 NAS 共享目录）保存 SQLite 数据库与上传图片。
 
 services:
   backend:
@@ -12,9 +12,10 @@ services:
     container_name: popstore-backend
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "9114:8000"
     environment:
       - TZ=Asia/Shanghai
+      # SQLite 与上传图片都落在 /app/data（绑定到下方 NAS 共享目录）
       - DATABASE_URL=sqlite:///./data/popstore.db
       - UPLOAD_DIR=/app/data/uploads
       - SECRET_KEY=change-me-please-use-a-strong-random-string
@@ -26,7 +27,7 @@ services:
     container_name: popstore-frontend
     restart: unless-stopped
     ports:
-      - "8080:80"
+      - "9115:80"
     depends_on:
       - backend
 

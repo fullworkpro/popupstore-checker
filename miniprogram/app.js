@@ -1,7 +1,7 @@
 // ── 手动环境切换 ──
 // 设为 'develop' / 'trial' / 'release' 可强制覆盖自动识别；设为 null 则按小程序运行环境自动判断。
 // 切换环境只需改这一行：
-const MANUAL_ENV = 'trial'
+const MANUAL_ENV = 'release'
 
 App({
   onLaunch() {
@@ -25,7 +25,7 @@ App({
     const API = {
       develop: 'http://127.0.0.1:8000/api/v1',        // 本地开发：连本机后台
       trial: 'http://192.168.50.147:9114/api/v1',      // 体验版：连局域网/测试机后台（按需修改 IP）
-      release: 'https://your-domain.com/api/v1',       // 正式版：HTTPS 域名（上线前改成真实域名）
+      release: 'https://popstore.nas.ccxiang.top/api/v1',       // 正式版：HTTPS 域名（上线前改成真实域名）
     }
 
     this.globalData.apiBase = API[env] || API.develop

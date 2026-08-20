@@ -46,20 +46,6 @@ app.add_middleware(
 )
 
 
-# 提前读取并缓存请求体，供 422 异常处理器打印（否则校验消费后无法再读）
-@app.middleware("http")
-async def _capture_request_body(request: Request, call_next):
-    if request.method in ("POST", "PUT", "PATCH"):
-        try:
-            request.state.raw_body = await request.body()
-        except Exception:
-            request.state.raw_body = b""
-    else:
-        request.state.raw_body = b""
-    response = await call_next(request)
-    return response
-
-
 # 静态文件（上传图片）
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=settings.UPLOAD_DIR), name="static")
@@ -100,9 +86,17 @@ def health():
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """422 参数校验失败时，把具体失败字段 + 收到的请求体打到日志，便于排障。"""
-    raw = getattr(request.state, "raw_body", b"")
-    body_str = raw.decode("utf-8", "replace") if raw else "<空请求体>"
+    """422 参数校验失败时，把具体失败字段 + 收到的请求体打到日志，便于排障。
+
+    注意：不要用 BaseHTTPMiddleware 在全局提前读 body。它会让 POST 请求在
+    Starlette 下挂起（GET 正常、POST 超时），表现就是登录 30s 超时且后端无访问日志。
+    这里在 422 处理函数内直接 await request.body() 即可（FastAPI 已缓存请求体）。
+    """
+    try:
+        raw = await request.body()
+        body_str = raw.decode("utf-8", "replace") if raw else "<空请求体>"
+    except Exception:
+        body_str = "<无法读取请求体>"
     logger.error("❌ 422 参数校验失败 | %s %s", request.method, request.url.path)
     logger.error("   收到的请求体: %s", body_str[:3000])
     for e in exc.errors():
