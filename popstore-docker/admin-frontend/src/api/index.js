@@ -51,7 +51,7 @@ export const reviewStore = (id, data) => api.post(`/admin/stores/${id}/review`, 
 export const uploadImage = (file) => {
   const fd = new FormData()
   fd.append('file', file)
-  return api.post('/admin/upload', fd, {
+  return api.post('/qiniu/upload', fd, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }

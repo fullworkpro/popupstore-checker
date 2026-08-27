@@ -30,6 +30,15 @@ services:
       - DEFAULT_ADMIN_USERNAME=admin
       # ↓↓↓ 请修改默认管理员密码（默认 admin123 不安全）↓↓↓
       - DEFAULT_ADMIN_PASSWORD=change-this-password
+      # ── 七牛云 KODO 图床 ──
+      # AK / SK 为敏感凭据，请用占位符管理、部署时再填真实值，勿提交明文到仓库
+      - QINIU_ACCESS_KEY=__FILL_YOUR_QINIU_ACCESS_KEY__
+      - QINIU_SECRET_KEY=__FILL_YOUR_QINIU_SECRET_KEY__
+      - QINIU_BUCKET=popstore-img
+      - QINIU_PUBLIC_DOMAIN=https://img.nas.ccxiang.top
+      - QINIU_UPLOAD_DOMAIN=https://upload-z2.qiniup.com
+      - QINIU_REGION=z2
+      - QINIU_TOKEN_EXPIRE=3600
     volumes:
       # 绿联云：左边改成你的共享目录真实绝对路径
       - /volume1/docker/popstore-platform/data:/app/data

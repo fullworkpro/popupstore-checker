@@ -79,44 +79,61 @@
           </el-select>
         </el-form-item>
 
-        <!-- 图片：支持本地上传（按年月日归档、混淆文件名）与 外链 URL 混用 -->
+        <!-- 图片：支持拖拽到区域上传（直传七牛图床）与 外链 URL 混用；列表可拖拽排序 -->
         <el-form-item label="图片">
-          <el-upload
-            action="/api/v1/admin/upload"
-            :http-request="customUpload"
-            :before-upload="beforeUpload"
-            :show-file-list="false"
-            accept="image/jpeg,image/png,image/gif,image/webp"
-            :disabled="uploading"
+          <div
+            class="upload-dropzone"
+            :class="{ 'is-dragover': isDragOver }"
+            @dragover.prevent="onDragOver"
+            @dragenter.prevent="onDragOver"
+            @dragleave.prevent="onDragLeave"
+            @drop.prevent="onDrop"
+            @click="triggerFileInput"
           >
-            <el-button type="primary" plain :loading="uploading">
-              <el-icon><Upload /></el-icon> 上传图片到服务器
-            </el-button>
-          </el-upload>
+            <el-icon class="dz-icon"><UploadFilled /></el-icon>
+            <div class="dz-title">将图片拖拽到此处上传</div>
+            <div class="dz-sub">可从浏览器其他标签页直接拖入图片，或点击选择文件</div>
+            <div class="dz-hint">支持 JPG / PNG / GIF / WEBP，单张 ≤ 10MB，自动直传七牛图床</div>
+            <input
+              ref="fileInput"
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              multiple
+              style="display:none"
+              @change="onFileInputChange"
+            />
+          </div>
           <el-alert
             type="info"
             :closable="false"
             show-icon
             style="margin:10px 0"
-            title="上传的图片按 年/月/日 自动归档，文件名已混淆；外链直接填写图片 URL，两种方式可同时存在。"
+            title="上传的图片直传七牛图床（公网 CDN 访问）；也可直接填写外链图片 URL。拖拽左侧 ⠿ 调整顺序，第一张为封面。两种方式可同时存在。"
           />
           <div style="width:100%">
-            <div
-              v-for="(img, i) in form.imagesList"
-              :key="i"
-              style="display:flex;gap:10px;margin-bottom:10px;align-items:center"
+            <draggable
+              v-model="form.imagesList"
+              item-key="id"
+              :animation="180"
+              handle=".drag-handle"
+              ghost-class="img-ghost"
             >
-              <el-input v-model="form.imagesList[i]" placeholder="粘贴图片 URL，如 https://..." style="flex:1" />
-              <el-button
-                v-if="form.imagesList.length > 1"
-                @click="removeImage(i)"
-                circle
-                text
-                type="danger"
-              >
-                <el-icon><Close /></el-icon>
-              </el-button>
-            </div>
+              <template #item="{ element, index }">
+                <div style="display:flex;gap:10px;margin-bottom:10px;align-items:center">
+                  <span class="drag-handle" title="拖拽调整顺序">⠿</span>
+                  <el-input v-model="element.url" placeholder="粘贴图片 URL，如 https://..." style="flex:1" />
+                  <el-button
+                    v-if="form.imagesList.length > 1"
+                    @click="removeImage(index)"
+                    circle
+                    text
+                    type="danger"
+                  >
+                    <el-icon><Close /></el-icon>
+                  </el-button>
+                </div>
+              </template>
+            </draggable>
             <el-button @click="addImage" plain>
               <el-icon><Plus /></el-icon> 新增图片
             </el-button>
@@ -155,10 +172,11 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { ArrowLeft, Plus, Close, Upload } from '@element-plus/icons-vue'
+import { ArrowLeft, Plus, Close, UploadFilled } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getStore, createStore, updateStore, uploadImage } from '../api'
 import SafeImage from '../components/SafeImage.vue'
+import draggable from 'vuedraggable'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()
@@ -166,7 +184,14 @@ const router = useRouter()
 const formRef = ref(null)
 const saving = ref(false)
 const uploading = ref(false)
+const fileInput = ref(null)
+const isDragOver = ref(false)
 const isEdit = computed(() => !!route.params.id)
+
+// 生成图片项稳定 id（拖拽排序需要唯一 key）
+function uid() {
+  return 'img_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+}
 
 const presetTags = ['快闪店', '二次元', '动漫', '游戏', '联名', '限定', '主题店', 'ACG', '手办', '周边', 'cosplay']
 
@@ -179,7 +204,7 @@ const form = reactive({
   organizer: '',
   reservation: 'no',
   tagsList: [],
-  imagesList: [''],
+  imagesList: [{ id: uid(), url: '' }],
   citiesList: [{ city: '', district: '', address: '' }],
   source: 'manual',
   source_url: '',
@@ -190,7 +215,7 @@ const rules = {
 }
 
 const previewImages = computed(() =>
-  form.imagesList.map((x) => (x || '').trim()).filter(Boolean)
+  form.imagesList.map((o) => (o.url || '').trim()).filter(Boolean)
 )
 
 onMounted(async () => {
@@ -201,7 +226,7 @@ onMounted(async () => {
       let images = []
       try { images = JSON.parse(data.images || '[]') } catch { images = [] }
       if (!images.length && data.cover_image) images = [data.cover_image]
-      form.imagesList = images.length ? images : ['']
+      form.imagesList = images.length ? images.map((url) => ({ id: uid(), url })) : [{ id: uid(), url: '' }]
 
       // 多城市
       let cities = []
@@ -232,7 +257,7 @@ onMounted(async () => {
 
 const addCity = () => form.citiesList.push({ city: '', district: '', address: '' })
 const removeCity = (i) => form.citiesList.splice(i, 1)
-const addImage = () => form.imagesList.push('')
+const addImage = () => form.imagesList.push({ id: uid(), url: '' })
 const removeImage = (i) => form.imagesList.splice(i, 1)
 
 // 上传前客户端校验（与后端文件头校验互补）
@@ -250,18 +275,65 @@ const beforeUpload = (file) => {
   return true
 }
 
-// 复用 api.uploadImage（走 axios 拦截器，自动带 token，相对路径 /api/v1）
-const customUpload = async (options) => {
-  uploading.value = true
-  try {
-    const { data } = await uploadImage(options.file)
-    form.imagesList.push(data.url)
-    ElMessage.success('上传成功，已加入图片列表')
-  } catch (e) {
-    ElMessage.error('上传失败，请重试')
-  } finally {
-    uploading.value = false
+// 点击区域触发隐藏文件选择
+const triggerFileInput = () => {
+  if (uploading.value) return
+  fileInput.value?.click()
+}
+
+// 拖拽悬停高亮
+const onDragOver = () => {
+  isDragOver.value = true
+}
+const onDragLeave = (e) => {
+  // 进入子元素时不取消高亮
+  if (e.currentTarget.contains(e.relatedTarget)) return
+  isDragOver.value = false
+}
+
+// 从文件选择框选图
+const onFileInputChange = (e) => {
+  const files = Array.from(e.target.files || [])
+  e.target.value = '' // 允许重复选择同一文件
+  if (files.length) uploadFiles(files)
+}
+
+// 拖拽释放：处理从文件管理器或其他标签页拖入的图片
+const onDrop = async (e) => {
+  isDragOver.value = false
+  if (uploading.value) return
+  const dt = e.dataTransfer
+  // 1) 优先取文件（Chrome/Firefox 从其他标签页拖图片通常会带 file）
+  const files = Array.from(dt.files || []).filter((f) => f.type.startsWith('image/'))
+  if (files.length) {
+    await uploadFiles(files)
+    return
   }
+  // 2) 回退：只有链接（某些网页拖图片元素只给 URL）
+  const uri = dt.getData('text/uri-list') || dt.getData('text/plain')
+  if (uri && /^https?:\/\//i.test(uri)) {
+    form.imagesList.push({ id: uid(), url: uri.trim() })
+    ElMessage.success('已作为外链图片加入列表')
+  }
+}
+
+// 批量上传（七牛直传，自动带 token）
+const uploadFiles = async (files) => {
+  const ok = []
+  for (const file of files) {
+    if (!beforeUpload(file)) continue
+    uploading.value = true
+    try {
+      const { data } = await uploadImage(file)
+      form.imagesList.push({ id: uid(), url: data.url })
+      ok.push(file.name || '图片')
+    } catch (e) {
+      ElMessage.error('上传失败：' + (file.name || ''))
+    } finally {
+      uploading.value = false
+    }
+  }
+  if (ok.length) ElMessage.success(`已上传 ${ok.length} 张图片`)
 }
 
 const handleSave = async () => {
@@ -277,7 +349,7 @@ const handleSave = async () => {
         district: (c.district || '').trim(),
         address: (c.address || '').trim(),
       }))
-    const images = form.imagesList.map((x) => (x || '').trim()).filter(Boolean)
+    const images = form.imagesList.map((o) => (o.url || '').trim()).filter(Boolean)
 
     const payload = {
       title: form.title,
@@ -314,3 +386,69 @@ const handleSave = async () => {
   }
 }
 </script>
+
+<style scoped>
+.upload-dropzone {
+  width: 100%;
+  min-height: 170px;
+  border: 2px dashed #dcdfe6;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  background: #fafafa;
+  transition: all 0.2s ease;
+  text-align: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+.upload-dropzone:hover {
+  border-color: #409eff;
+  background: #f5f9ff;
+}
+.upload-dropzone.is-dragover {
+  border-color: #409eff;
+  background: #ecf5ff;
+  transform: scale(1.01);
+}
+.dz-icon {
+  font-size: 46px;
+  color: #c0c4cc;
+  transition: color 0.2s ease;
+}
+.upload-dropzone.is-dragover .dz-icon,
+.upload-dropzone:hover .dz-icon {
+  color: #409eff;
+}
+.dz-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+.dz-sub {
+  font-size: 13px;
+  color: #909399;
+}
+.dz-hint {
+  font-size: 12px;
+  color: #c0c4cc;
+}
+.drag-handle {
+  cursor: grab;
+  color: #c0c4cc;
+  font-size: 18px;
+  user-select: none;
+  line-height: 1;
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+.img-ghost {
+  opacity: 0.4;
+  background: #ecf5ff;
+  border-radius: 6px;
+}
+</style>

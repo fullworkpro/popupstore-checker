@@ -1,7 +1,7 @@
 """FastAPI 应用入口"""
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response, Depends
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +14,8 @@ from app.api.auth import router as auth_router
 from app.api.admin import router as admin_router
 from app.api.mini import router as mini_router
 from app.api.proxy import router as proxy_router
+from app.api.qiniu import router as qiniu_router
+from app.api.version import router as version_router, build_version_payload
 import os
 
 logging.basicConfig(level=logging.INFO)
@@ -30,10 +32,26 @@ async def lifespan(app: FastAPI):
     yield
 
 
+def no_cache_dynamic(request: Request, response: Response):
+    """动态接口禁止缓存。
+
+    后端默认不输出 Cache-Control，导致浏览器 / 微信客户端 / 反向代理会按自身
+    策略缓存 GET 响应（例如首页门店列表、详情）。表现就是：后台改了数据，小程序
+    或浏览器却仍看到旧内容。这里对所有 /api/* 与 /version.json 统一加
+    `no-store`；若某路由自身已显式设置 Cache-Control（如 proxy-image 的图片
+    `max-age=86400`），由于该路由返回的是独立 Response 对象，其显式头会覆盖本
+    默认值，因此图片缓存行为不受影响。
+    """
+    path = request.url.path
+    if path.startswith("/api") or path == "/version.json":
+        response.headers["Cache-Control"] = "no-store"
+
+
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     lifespan=lifespan,
+    dependencies=[Depends(no_cache_dynamic)],
 )
 
 # CORS
@@ -55,6 +73,15 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 app.include_router(mini_router, prefix="/api/v1")
 app.include_router(proxy_router, prefix="/api/v1")
+app.include_router(qiniu_router, prefix="/api/v1")
+app.include_router(version_router, prefix="/api/v1")
+
+
+@app.get("/version.json", response_model=dict)
+def version_json():
+    """根路径部署指纹：popstore.nas.ccxiang.top/version.json 直接返回后端部署标签，
+    与 /api/v1/version 同源，便于在默认域名一键核对。"""
+    return build_version_payload({"source": "backend"})
 
 
 @app.get("/")
