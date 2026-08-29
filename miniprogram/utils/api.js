@@ -4,15 +4,18 @@
  */
 const request = (url, options = {}) => {
   const apiBase = getApp().globalData.apiBase
+  // 若本地 Storage 存有管理员令牌（运营在手机端调试图床时写入），自动带上
+  const token = wx.getStorageSync('admin_token')
+  const header = { 'Content-Type': 'application/json', ...options.header }
+  if (token && !options.skipAuth) {
+    header['Authorization'] = 'Bearer ' + token
+  }
   return new Promise((resolve, reject) => {
     wx.request({
       url: apiBase + url,
       method: options.method || 'GET',
       data: options.data || {},
-      header: {
-        'Content-Type': 'application/json',
-        ...options.header,
-      },
+      header,
       success(res) {
         if (res.statusCode === 200) {
           resolve(res.data)
@@ -69,4 +72,9 @@ const getTags = () => {
   return request('/mini/tags')
 }
 
-module.exports = { getStores, getStoreDetail, getBanners, getCities, getTags, resolveImage }
+// 获取七牛上传凭证（需管理员令牌；运营端调试时从 Storage 读取 admin_token）
+const getQiniuUptoken = (ext = 'jpg') => {
+  return request('/qiniu/uptoken?ext=' + ext)
+}
+
+module.exports = { getStores, getStoreDetail, getBanners, getCities, getTags, resolveImage, getQiniuUptoken }

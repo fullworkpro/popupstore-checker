@@ -14,6 +14,8 @@ from app.api.auth import router as auth_router
 from app.api.admin import router as admin_router
 from app.api.mini import router as mini_router
 from app.api.proxy import router as proxy_router
+from app.api.qiniu import router as qiniu_router
+from app.api.version import router as version_router, build_version_payload
 import os
 
 logging.basicConfig(level=logging.INFO)
@@ -55,6 +57,15 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 app.include_router(mini_router, prefix="/api/v1")
 app.include_router(proxy_router, prefix="/api/v1")
+app.include_router(qiniu_router, prefix="/api/v1")
+app.include_router(version_router, prefix="/api/v1")
+
+
+@app.get("/version.json", response_model=dict)
+def version_json():
+    """根路径部署指纹：popstore.nas.ccxiang.top/version.json 直接返回后端部署标签，
+    与 /api/v1/version 同源，便于在默认域名一键核对。"""
+    return build_version_payload({"source": "backend"})
 
 
 @app.get("/")

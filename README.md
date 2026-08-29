@@ -25,6 +25,7 @@ PopStore Platform 面向二次元（ACG）快闪店的设备查询与门店运�
 - 爬虫日志查看（CrawlLogs）
 - JWT 登录鉴权
 - 外链图片加载与**失败提示**（`SafeImage` 组件：加载失败显示明确错误而非空白）
+- 图片上传到**图床**（拖拽大区，支持从其他标签页直接拖图；已上传图片可拖拽排序，首位为封面）
 
 ### 微信小程序（原生）
 - 首页 / 列表 / 详情 / 收藏
@@ -32,6 +33,9 @@ PopStore Platform 面向二次元（ACG）快闪店的设备查询与门店运�
 
 ### 后端（FastAPI）
 - 管理后台 API + 小程序 API（统一 `/api/v1`）
+- **图床接入**（`app/api/qiniu.py`）：签发有时效的上传凭证（`GET /qiniu/uptoken`）并提供后端代理上传（`POST /qiniu/upload`），管理后台与小程序的图片统一存到图床
+- **部署指纹**（`app/api/version.py`）：`GET /api/v1/version` 与 `GET /version.json` 返回 `deploy_tag` 与源码指纹，用于核对线上跑的是不是最新代码
+- **API 不缓存**：对所有 `/api/*` 响应统一加 `Cache-Control: no-store`，避免改完数据仍显示旧内容
 - 多平台内容爬虫：微信 / 微博 / 小红书（`run_crawler.py` 独立脚本）
 - SQLite 存储，针对**网络共享卷**做了锁竞争加固（`busy_timeout` / `synchronous=NORMAL`）
 - 同源图片代理 `GET /api/v1/proxy-image`，绕过外链防盗链 / 混合内容
@@ -84,6 +88,7 @@ popstore-platform/
 | `DATABASE_URL` | `sqlite:///./data/popstore.db` | 一般不用改，SQLite 落在 `/app/data` |
 | `UPLOAD_DIR` | `/app/data/uploads` | 上传图片目录，一般不用改 |
 | `TZ` | `Asia/Shanghai` | 时区，一般不用改 |
+| `QINIU_*` | 见 `compose.yml` 注释 | 图床相关（AccessKey / SecretKey / Bucket / 域名等），按需填写 |
 
 ### 3. 数据目录（务必用真实绝对路径，便于备份迁移）
 
@@ -124,11 +129,28 @@ docker compose up -d --build       # 改代码后重建并启动
 
 1. 在 `miniprogram/app.js` 修改 `apiBase`：
    - 开发 / 体验版（局域网）：`http://<NAS_IP>:9114/api/v1`
-   - 正式版（**必须 HTTPS**）：如 `https://popstore.nas.ccxiang.top/api/v1`
+   - 正式版（**必须 HTTPS**）：`https://你的域名/api/v1`（该域名需在微信公众平台加入合法域名）
 2. 微信公众平台 → 开发管理 → 服务器域名，把该 HTTPS 域名加入 **request 合法域名** 与 **downloadFile 合法域名**。
 3. 用微信开发者工具上传为体验版 / 正式版。
 
-> 上传图片走 `/static/...`，与后端同域，无需额外配置。
+> 上传图片走图床（与后端同链路），正式环境需在微信公众平台把图床域名加入 **downloadFile 合法域名**，否则图片在真机 / 审核时被拦截。
+
+---
+
+## 🔍 部署指纹核对
+
+改完代码重建后，用以下方式确认线上跑的是不是最新版本：
+
+```bash
+# 后端指纹（同源两个端点，仅 source 字段不同）
+curl https://你的域名/api/v1/version
+curl https://你的域名/version.json
+# 前端指纹（独立 deploy_tag）
+curl https://你的域名:9115/version.json
+```
+
+- 后端两个端点应返回相同的 `deploy_tag` 与 `backend_fingerprint`；
+- 若两个端点返回值不一致，说明有旧容器 / 缓存层在响应，需重建并清缓存。
 
 ---
 
@@ -140,7 +162,11 @@ docker compose up -d --build       # 改代码后重建并启动
 
 ## 🗒️ 版本
 
-- **v1.1**（当前）：修复登录 30s 超时根因（移除导致 POST 挂起的 `BaseHTTPMiddleware`）、SQLite 网络挂载加固、Linux `tzdata` 时区、外链图片直连省带宽、小程序 HTTPS 域名适配。详见 [Releases](../../releases/tag/v1.1)。
+当前版本相对上一版的主要变更：
+
+- **图床**：接入对象存储图床，管理后台与小程序图片统一上传到图床（`app/api/qiniu.py` 提供凭证签发与代理上传）；admin 上传区改为大拖拽区并支持已上传图片拖拽排序；小程序侧移除了详情页冗余的"传图床"演示入口。
+- **部署指纹**：新增 `GET /api/v1/version` 与 `GET /version.json`，返回 `deploy_tag` 与源码指纹（前端另含独立的 `deploy_tag`），便于一条命令核对线上代码版本。
+- **API 不缓存**：后端对所有 `/api/*` 响应加 `Cache-Control: no-store`，避免 CDN / 反向代理缓存导致数据更新后小程序仍显示旧内容。
 
 ---
 

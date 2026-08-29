@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     # ── 应用基础 ──
     APP_NAME: str = "PopStore Platform"
     APP_VERSION: str = "1.0.0"
+    # 部署标签：每次有意义的改动请手动 +1（如 2026-08-27-qiniu-admin-v1）。
+    # 用于 /api/v1/version 接口与前端 /version.json 比对，确认 NAS 跑的是不是最新代码。
+    APP_DEPLOY_TAG: str = "2026-08-27-admin-v2"
     DEBUG: bool = True
 
     # ── 数据库 ──
@@ -43,6 +46,19 @@ class Settings(BaseSettings):
         "image/gif",
         "image/webp",
     ]
+
+    # ── 七牛云 KODO 图床 ──
+    # AK 可公开配置；SK 必须保密，仅存于服务端环境变量，绝不进代码/前端。
+    QINIU_ACCESS_KEY: str = os.getenv("QINIU_ACCESS_KEY", "")
+    QINIU_SECRET_KEY: str = os.getenv("QINIU_SECRET_KEY", "")
+    QINIU_BUCKET: str = os.getenv("QINIU_BUCKET", "popstore-img")
+    # 七牛绑定后的公开访问域名（加速域名），如 https://img.nas.ccxiang.top
+    QINIU_PUBLIC_DOMAIN: str = os.getenv("QINIU_PUBLIC_DOMAIN", "https://img.nas.ccxiang.top")
+    # 上传域名随存储区域变化：华南-广东=z2 → upload-z2.qiniup.com
+    # 华东-浙江=z0 → upload-z0.qiniup.com；华北=z1 → upload-z1.qiniup.com
+    QINIU_UPLOAD_DOMAIN: str = os.getenv("QINIU_UPLOAD_DOMAIN", "https://upload-z2.qiniup.com")
+    QINIU_REGION: str = os.getenv("QINIU_REGION", "z2")  # z0华东 / z1华北 / z2华南
+    QINIU_TOKEN_EXPIRE: int = int(os.getenv("QINIU_TOKEN_EXPIRE", "3600"))  # 秒
 
     # ── 爬虫配置 ──
     CRAWLER_SCHEDULE: List[str] = ["02:00", "13:00"]
