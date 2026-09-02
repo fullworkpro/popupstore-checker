@@ -7,6 +7,20 @@ const PALETTE = [
   '#D63031', '#74B9FF', '#55EFC4', '#F79F1F',
 ]
 
+// 快闪类型：与后台 models/store.py 的 STORE_TYPES 保持一致
+const STORE_TYPES = [
+  { value: 'popup', label: '联名快闪' },
+  { value: 'exhibition', label: '特展' },
+  { value: 'restaurant', label: '联名餐厅' },
+]
+const DEFAULT_STORE_TYPE = 'popup'
+// 默认城市：无论数据里有没有，都固定排在选项首位
+const DEFAULT_CITY = '广州'
+
+// 记住用户最后一次选择的城市/类型，下次打开小程序自动恢复
+const CITY_STORAGE_KEY = 'popstore_last_city'
+const TYPE_STORAGE_KEY = 'popstore_last_type'
+
 const FUTURE = new Date(2099, 0, 1)
 
 // 手动解析 ISO 日期串，只取日期部分
@@ -68,6 +82,10 @@ function normalizeStore(s, idx) {
   return Object.assign({}, s, {
     cover,
     cityText,
+    cityList,
+    // 后端老数据可能没有 store_type，回退默认类型，保证筛选不漏数据
+    storeType: s.store_type || DEFAULT_STORE_TYPE,
+    typeLabel: (STORE_TYPES.filter((t) => t.value === (s.store_type || DEFAULT_STORE_TYPE))[0] || STORE_TYPES[0]).label,
     start,
     end,
     dateText,
@@ -83,6 +101,7 @@ Page({
     monthLabel: '',
     todayStr: '',
     allStores: [],
+    filteredStores: [],
     monthStores: [],
     visibleStores: [],
     selectedDate: '',
@@ -90,6 +109,14 @@ Page({
     canPrev: true,
     canNext: true,
     loading: false,
+
+    // 首页筛选：城市 + 快闪类型（单选下拉，默认 广州 / 联名快闪）
+    cityOptions: [DEFAULT_CITY],
+    cityIndex: 0,
+    typeOptions: STORE_TYPES,
+    typeIndex: 0,
+    filterLabel: DEFAULT_CITY + ' · ' + STORE_TYPES[0].label,
+    emptyText: '',
   },
 
   onLoad() {
@@ -97,15 +124,41 @@ Page({
     // 基准月：当前真实年月，用于限制可翻动范围（上一个月 ~ 下两个月）
     this._baseY = now.getFullYear()
     this._baseM = now.getMonth() + 1
+
+    // 恢复上次选择的城市/类型：城市选项要等接口回来才建得出来，
+    // 所以先记在 _preferredCity 里，由 _rebuildCityOptions 负责落地。
+    this._preferredCity = this._readStorage(CITY_STORAGE_KEY) || DEFAULT_CITY
+    const savedType = this._readStorage(TYPE_STORAGE_KEY)
+    const savedTypeIdx = STORE_TYPES.map((t) => t.value).indexOf(savedType)
+    const typeIndex = savedTypeIdx >= 0 ? savedTypeIdx : 0
+
     this.setData({
       viewYear: now.getFullYear(),
       viewMonth: now.getMonth() + 1,
       todayStr: dateStr(now),
+      typeIndex,
+      // 首帧先按恢复的城市/类型渲染文案，接口回来后由 _applyFilters 校正
+      filterLabel: this._preferredCity + ' · ' + STORE_TYPES[typeIndex].label,
     }, () => {
       // 先渲染空月历框架，避免等待接口时页面空白
       this.buildCalendar()
       this.loadStores()
     })
+  },
+
+  // Storage 读取兜底：小程序存储不可用（如隐私模式/超配额）时不影响主流程
+  _readStorage(key) {
+    try {
+      return wx.getStorageSync(key) || ''
+    } catch (e) {
+      return ''
+    }
+  },
+
+  _writeStorage(key, value) {
+    try {
+      wx.setStorageSync(key, value)
+    } catch (e) { /* 存不了就算了，不影响本次使用 */ }
   },
 
   // 当前视图月相对基准月的差值（月），用于翻页边界判断
@@ -129,7 +182,12 @@ Page({
     try {
       const data = await getStores({ page: 1, page_size: 200 })
       const all = (data.items || []).map(normalizeStore)
-      this.setData({ allStores: all }, () => this.buildCalendar())
+      // 刷新后重建城市选项（数据里的城市可能变了），再按当前筛选条件重算
+      this._rebuildCityOptions(all)
+      this.setData({ allStores: all }, () => {
+        this._applyFilters()
+        this.buildCalendar()
+      })
     } catch (e) {
       console.error('加载失败', e)
       // 即使接口失败也保持月历框架渲染，并提示用户
@@ -138,9 +196,67 @@ Page({
     }
   },
 
+  // 城市选项：默认城市固定首位，其余按数据中出现的城市排序去重
+  _rebuildCityOptions(all) {
+    const set = {}
+    ;(all || []).forEach((s) => {
+      ;(s.cityList || []).forEach((c) => {
+        if (c) set[c] = true
+      })
+    })
+    const others = Object.keys(set).filter((c) => c !== DEFAULT_CITY).sort()
+    const options = [DEFAULT_CITY].concat(others)
+
+    // 选中优先级：用户最后选过的城市 > 当前选中的城市 > 默认城市
+    // （默认城市恒为 options[0]，所以兜底 idx 一定是 0）
+    const cur = this._preferredCity || this.data.cityOptions[this.data.cityIndex]
+    let idx = options.indexOf(cur)
+    if (idx < 0) idx = 0
+    this.setData({ cityOptions: options, cityIndex: idx })
+  },
+
+  // 按「城市 + 快闪类型」过滤，结果供月历与列表使用
+  _applyFilters() {
+    const { allStores, cityOptions, cityIndex, typeOptions, typeIndex } = this.data
+    const city = cityOptions[cityIndex]
+    const type = (typeOptions[typeIndex] || {}).value || DEFAULT_STORE_TYPE
+
+    const filtered = (allStores || []).filter((s) => {
+      if ((s.storeType || DEFAULT_STORE_TYPE) !== type) return false
+      if (!city) return true
+      return (s.cityList || []).indexOf(city) >= 0
+    })
+
+    this.setData({
+      filteredStores: filtered,
+      filterLabel: city + ' · ' + ((typeOptions[typeIndex] || {}).label || ''),
+    })
+  },
+
+  onCityChange(e) {
+    const idx = Number(e.detail.value) || 0
+    const city = this.data.cityOptions[idx]
+    // 记住选择，下次打开小程序自动落在同一个城市
+    this._preferredCity = city
+    this._writeStorage(CITY_STORAGE_KEY, city)
+    this.setData({ cityIndex: idx, selectedDate: '', selectedColor: '' }, () => {
+      this._applyFilters()
+      this.buildCalendar()
+    })
+  },
+
+  onTypeChange(e) {
+    const idx = Number(e.detail.value) || 0
+    this._writeStorage(TYPE_STORAGE_KEY, (this.data.typeOptions[idx] || {}).value || DEFAULT_STORE_TYPE)
+    this.setData({ typeIndex: idx, selectedDate: '', selectedColor: '' }, () => {
+      this._applyFilters()
+      this.buildCalendar()
+    })
+  },
+
   // 生成日历网格 + 跨天持续线 + 当月/当天快闪
   buildCalendar() {
-    const { viewYear, viewMonth, allStores, selectedDate } = this.data
+    const { viewYear, viewMonth, filteredStores, selectedDate } = this.data
     const firstOfMonth = dateOnly(new Date(viewYear, viewMonth - 1, 1))
     const lastOfMonth = dateOnly(new Date(viewYear, viewMonth, 0))
 
@@ -163,7 +279,7 @@ Page({
         d.setDate(d.getDate() + i)
         const inMonth = d.getMonth() + 1 === viewMonth
         const ds = dateStr(d)
-        const dayStores = allStores.filter((s) => s.start && s.start <= d && d <= s.end)
+        const dayStores = filteredStores.filter((s) => s.start && s.start <= d && d <= s.end)
         row.push({
           day: inMonth ? d.getDate() : null,
           dateStr: ds,
@@ -179,7 +295,7 @@ Page({
 
       // 跨天持续线：每个快闪在当前周的覆盖段
       const segments = []
-      allStores.forEach((s) => {
+      filteredStores.forEach((s) => {
         if (!s.start) return
         const segStart = s.start < weekStart ? weekStart : s.start
         const segEnd = s.end > weekEnd ? weekEnd : s.end
@@ -231,8 +347,8 @@ Page({
       })
     }
 
-    // 当月快闪（与本月有重叠）
-    const monthStores = allStores.filter((s) => {
+    // 当月快闪（与本月有重叠）——已按城市/类型过滤
+    const monthStores = filteredStores.filter((s) => {
       if (!s.start) return false
       return s.end >= firstOfMonth && s.start <= lastOfMonth
     })
@@ -244,6 +360,12 @@ Page({
       visibleStores = monthStores.filter((s) => s.start <= ds && ds <= s.end)
     }
 
+    // 空态文案带上当前筛选条件，避免用户误以为「没有数据」
+    const label = this.data.filterLabel
+    const emptyText = selectedDate
+      ? selectedDate + ' 这天没有符合条件的快闪店 🎌（' + label + '）'
+      : '本月暂无符合条件的快闪店 🎌（' + label + '）'
+
     // 翻页边界：最小「上一个月」(-1)，最大「下两个月」(+2)
     const offset = this._monthOffset()
     this.setData({
@@ -251,6 +373,7 @@ Page({
       monthLabel: viewYear + '年' + viewMonth + '月',
       monthStores,
       visibleStores,
+      emptyText,
       canPrev: offset > -1,
       canNext: offset < 2,
       loading: false,

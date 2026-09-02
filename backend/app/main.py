@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+
 from app.core.config import settings
 from app.core.database import init_db
 from app.api.auth import router as auth_router
@@ -16,6 +17,7 @@ from app.api.mini import router as mini_router
 from app.api.proxy import router as proxy_router
 from app.api.qiniu import router as qiniu_router
 from app.api.version import router as version_router, build_version_payload
+from app.crawler.scheduler import init_scheduler, shutdown_scheduler
 import os
 
 logging.basicConfig(level=logging.INFO)
@@ -24,12 +26,19 @@ logger = logging.getLogger("popstore")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期：启动时初始化数据库"""
+    """应用生命周期：启动时初始化数据库 + 注册爬虫定时任务"""
     logger.info("🚀 PopStore Platform 启动中...")
     init_db()
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     logger.info("✅ 数据库初始化完成")
+
+    # 爬虫定时任务依据数据库中的配置（schedule / enabled）注册
+    init_scheduler()
+
     yield
+
+    shutdown_scheduler()
+    logger.info("👋 PopStore Platform 已停止")
 
 
 app = FastAPI(

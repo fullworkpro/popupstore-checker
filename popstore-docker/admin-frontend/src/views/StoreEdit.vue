@@ -65,6 +65,17 @@
           <el-input v-model="form.organizer" placeholder="品牌/主办方名称" />
         </el-form-item>
 
+        <el-form-item label="快闪类型">
+          <el-radio-group v-model="form.store_type">
+            <el-radio v-for="t in storeTypes" :key="t.value" :value="t.value">
+              {{ t.label }}
+            </el-radio>
+          </el-radio-group>
+          <div style="font-size:12px;color:#909399;line-height:1.6;margin-top:4px">
+            用于小程序首页「快闪类型」下拉筛选；默认「联名快闪」。
+          </div>
+        </el-form-item>
+
         <el-form-item label="预约方式">
           <el-radio-group v-model="form.reservation">
             <el-radio value="required">需预约</el-radio>
@@ -195,6 +206,14 @@ function uid() {
 
 const presetTags = ['快闪店', '二次元', '动漫', '游戏', '联名', '限定', '主题店', 'ACG', '手办', '周边', 'cosplay']
 
+// 快闪类型：与后端 models/store.py 的 STORE_TYPES 保持一致
+const storeTypes = [
+  { value: 'popup', label: '联名快闪' },
+  { value: 'exhibition', label: '特展' },
+  { value: 'restaurant', label: '联名餐厅' },
+]
+const DEFAULT_STORE_TYPE = 'popup'
+
 const form = reactive({
   title: '',
   subtitle: '',
@@ -202,6 +221,7 @@ const form = reactive({
   start_date: null,
   end_date: null,
   organizer: '',
+  store_type: DEFAULT_STORE_TYPE,
   reservation: 'no',
   tagsList: [],
   imagesList: [{ id: uid(), url: '' }],
@@ -242,6 +262,8 @@ onMounted(async () => {
       form.start_date = data.start_date ? data.start_date.split('T')[0] : null
       form.end_date = data.end_date ? data.end_date.split('T')[0] : null
       form.organizer = data.organizer || ''
+      // 老数据可能没有 store_type，回退默认类型（后端也会兜底，这里保证表单不空白）
+      form.store_type = data.store_type || DEFAULT_STORE_TYPE
       form.reservation = data.reservation || 'no'
       form.source = data.source || 'manual'
       form.source_url = data.source_url || ''
@@ -358,6 +380,7 @@ const handleSave = async () => {
       start_date: form.start_date || null,
       end_date: form.end_date || null,
       organizer: form.organizer,
+      store_type: form.store_type || DEFAULT_STORE_TYPE,
       reservation: form.reservation,
       source: form.source,
       source_url: form.source_url,

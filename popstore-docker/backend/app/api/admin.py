@@ -1,5 +1,4 @@
 """后台管理 API — 快闪店 CRUD、审核、统计、爬虫触发"""
-import json
 import os
 import uuid
 from datetime import datetime, timezone
@@ -11,13 +10,16 @@ from sqlalchemy import func, desc
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.models.store import Store, StoreStatus, CrawlLog
+from app.models.store import Store, StoreStatus, CrawlLog, CrawlerState, CrawlerConfig
 from app.models.admin import Admin
 from app.api.deps import get_current_admin
+from app.crawler.config_store import get_or_create_config, apply_config_update
+from app.crawler.scheduler import sync_scheduler
+from app.services.archive import archive_expired_stores
 from app.schemas.schemas import (
     StoreCreate, StoreUpdate, StoreResponse, StoreListResponse,
     ReviewRequest, CrawlLogResponse, CrawlLogListResponse,
-    DashboardStats, MessageResponse,
+    DashboardStats, MessageResponse, CrawlerConfigResponse, CrawlerConfigUpdate,
 )
 
 router = APIRouter(prefix="/admin", tags=["后台管理"])
@@ -246,15 +248,111 @@ def list_crawl_logs(
     )
 
 
-# ── 手动触发爬虫 ──
+@router.post("/archive/run", response_model=MessageResponse)
+def run_archive_now(
+    db: Session = Depends(get_db),
+    _: Admin = Depends(get_current_admin),
+):
+    """手动触发一次归档：把「已发布且结束日期 < 今天」的快闪店置为已归档。
+
+    与每日 03:15 的定时任务等价，用于立刻验证归档逻辑或临时清理。
+    """
+    n = archive_expired_stores(db, force=True)
+    return MessageResponse(
+        message=f"归档完成，本次归档 {n} 条" if n else "没有需要归档的快闪店"
+    )
+
+
+# ── 手动触发爬虫（后台异步，立即返回，避免长耗时请求被 nginx/浏览器超时 499）──
+import threading
+
+_thread_lock = threading.Lock()  # 仅用于本进程的线程计数，真正的并发防重由 scheduler 锁负责
+
+
 @router.post("/crawl/trigger", response_model=MessageResponse)
 def trigger_crawl(_: Admin = Depends(get_current_admin)):
-    try:
+    def _bg():
         from app.crawler.scheduler import run_all_crawlers
-        result = run_all_crawlers()
-        return MessageResponse(message=f"爬虫已触发: {result}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"爬虫执行失败: {str(e)}")
+        try:
+            run_all_crawlers()
+        except Exception as e:  # 后台线程异常不应影响主流程，仅记录
+            logger.error("[admin] 后台全量爬虫异常: %s", e)
+
+    threading.Thread(target=_bg, daemon=True).start()
+    return MessageResponse(
+        message="爬虫已在后台启动（全量：微信/微博，小红书/抖音规划中），"
+                "任务约需数十分钟，请稍后在「爬虫」页面查看「上次成功时间/待发布数/最近日志」，"
+                "无需保持本页面打开。"
+    )
+
+
+# ── 爬虫配置 + 运行态（前端「爬虫」页面统一读取）──
+def _build_crawler_status(db: Session) -> dict:
+    cfg = get_or_create_config(db)
+    state = db.query(CrawlerState).filter(CrawlerState.source == "weibo").first()
+    draft_weibo = (
+        db.query(func.count(Store.id))
+        .filter(Store.source == "weibo", Store.status == StoreStatus.DRAFT.value)
+        .scalar()
+        or 0
+    )
+    last_log = (
+        db.query(CrawlLog)
+        .filter(CrawlLog.source == "weibo")
+        .order_by(desc(CrawlLog.created_at))
+        .first()
+    )
+    data = cfg.to_dict()
+    data["last_success_at"] = state.last_success_at.isoformat() if state and state.last_success_at else None
+    data["last_run_at"] = state.last_run_at.isoformat() if state and state.last_run_at else None
+    data["last_error"] = state.last_error if state else ""
+    data["pending_weibo_draft"] = draft_weibo
+    data["last_log"] = last_log.to_dict() if last_log else None
+    return data
+
+
+@router.get("/crawler/config", response_model=CrawlerConfigResponse)
+def get_crawler_config(db: Session = Depends(get_db), _: Admin = Depends(get_current_admin)):
+    return _build_crawler_status(db)
+
+
+@router.put("/crawler/config", response_model=CrawlerConfigResponse)
+def update_crawler_config(
+    payload: CrawlerConfigUpdate,
+    db: Session = Depends(get_db),
+    _: Admin = Depends(get_current_admin),
+):
+    try:
+        apply_config_update(db, payload.model_dump(exclude_unset=True))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    # 实时同步定时任务（排程 / 启停）
+    sync_scheduler(db)
+    return _build_crawler_status(db)
+
+
+# ── 仅触发微博爬虫（后台异步，全站搜索原创二次元快闪微博，依据数据库配置）──
+@router.post("/crawler/weibo/run", response_model=MessageResponse)
+def run_weibo_crawler(_: Admin = Depends(get_current_admin)):
+    def _bg():
+        from app.crawler.scheduler import run_weibo_only
+        try:
+            run_weibo_only()
+        except Exception as e:
+            logger.error("[admin] 后台微博爬虫异常: %s", e)
+
+    threading.Thread(target=_bg, daemon=True).start()
+    return MessageResponse(
+        message="微博爬虫已在后台启动。若已配置有效 UID 的监控账号则走「账号监控」模式（游客可读、限流轻），"
+                "否则走「全站关键词搜索」。任务约需数十分钟，请稍后在「爬虫」页面查看"
+                "「上次成功时间 / 待发布数 / 最近日志」，无需保持本页面打开。"
+    )
+
+
+# ── 爬虫运行态（兼容旧接口，内容同 /crawler/config 的运行态部分）──
+@router.get("/crawler/state", response_model=dict)
+def crawler_state(db: Session = Depends(get_db), _: Admin = Depends(get_current_admin)):
+    return _build_crawler_status(db)
 
 
 # ── 城市列表（用于筛选） ──

@@ -32,9 +32,9 @@ const routes = [
         component: () => import('../views/StoreEdit.vue'),
       },
       {
-        path: 'crawl-logs',
-        name: 'CrawlLogs',
-        component: () => import('../views/CrawlLogs.vue'),
+        path: 'crawler',
+        name: 'Crawler',
+        component: () => import('../views/Crawler.vue'),
       },
     ],
   },

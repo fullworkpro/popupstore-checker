@@ -41,6 +41,9 @@ _FINGERPRINT_FILES = [
     "main.py",
     "api/qiniu.py",
     "api/admin.py",
+    "crawler/weibo_crawler.py",
+    "crawler/scheduler.py",
+    "crawler/base_crawler.py",
 ]
 
 

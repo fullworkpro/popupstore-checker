@@ -46,6 +46,11 @@
       <el-table :data="list" stripe v-loading="loading">
         <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
         <el-table-column prop="city" label="城市" width="80" />
+        <el-table-column prop="store_type_label" label="类型" width="100">
+          <template #default="{ row }">
+            <el-tag size="small" type="warning">{{ row.store_type_label || '联名快闪' }}</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="source" label="来源" width="80">
           <template #default="{ row }">
             <el-tag size="small">{{ sourceLabel(row.source) }}</el-tag>

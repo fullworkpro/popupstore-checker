@@ -14,25 +14,77 @@
   font-size: 28rpx;
 }
 
-/* 标签栏 */
+/* 标签栏：始终只有一行高度，标签自动换行但被容器裁掉 → 不出现左右滚动条。
+   右侧固定一个「展开/收起」按钮，点击后放开高度显示全部标签。 */
 .tag-bar {
-  white-space: nowrap;
+  position: relative;
   padding: 16rpx 24rpx;
   background: #fff;
   border-top: 1rpx solid #f0f0f0;
+  /* 收起态高度 = 上内边距 16 + 单行标签 52 + 下内边距 16 */
+  max-height: 84rpx;
+  overflow: hidden;
 }
+/* 展开态：放开高度限制，让所有标签自然换行铺满 */
+.tag-bar.expanded {
+  max-height: 2400rpx;
+}
+
+.tag-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx 16rpx;
+  /* 给右上角展开按钮留位，避免最后一个标签被压在按钮下面 */
+  padding-right: 120rpx;
+}
+
 .tag-item {
-  display: inline-block;
-  padding: 8rpx 24rpx;
-  margin-right: 16rpx;
-  border-radius: 30rpx;
+  height: 52rpx;
+  line-height: 52rpx;
+  padding: 0 24rpx;
+  border-radius: 26rpx;
   background: #f0f0f0;
   font-size: 24rpx;
   color: #666;
+  flex: 0 0 auto;
+  /* 超长标签截断而不是撑破单行布局 */
+  max-width: 260rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tag-item.active {
   background: #6C5CE7;
   color: #fff;
+}
+
+/* 展开 / 收起按钮：钉在标签栏最右端第一行 */
+.tag-toggle {
+  position: absolute;
+  right: 16rpx;
+  top: 16rpx;
+  height: 52rpx;
+  padding: 0 16rpx 0 20rpx;
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+  background: #fff;
+  border-radius: 26rpx;
+  /* 左侧白色渐隐，让被裁掉的标签自然过渡，不与按钮硬切 */
+  box-shadow: -20rpx 0 16rpx 4rpx #fff;
+}
+.tag-toggle-text {
+  font-size: 24rpx;
+  color: #6C5CE7;
+}
+.tag-toggle-arrow {
+  font-size: 18rpx;
+  color: #6C5CE7;
+  line-height: 1;
+  transition: transform .2s ease;
+}
+.tag-toggle-arrow.up {
+  transform: rotate(180deg);
 }
 
 /* 排序 */
@@ -52,10 +104,36 @@
   font-weight: bold;
 }
 
+/* 快闪类型筛选：单行均分，不做左右滚动 */
+.type-bar {
+  display: flex;
+  padding: 0 24rpx 16rpx;
+  background: #fff;
+  gap: 16rpx;
+}
+.type-item {
+  flex: 1 1 0;
+  text-align: center;
+  height: 56rpx;
+  line-height: 56rpx;
+  border-radius: 28rpx;
+  background: #f5f5f5;
+  font-size: 24rpx;
+  color: #666;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.type-item.active {
+  background: #6C5CE7;
+  color: #fff;
+  font-weight: bold;
+}
+
 .store-list {
   padding: 20rpx 24rpx;
 }
 .store-card {
+  position: relative;
   background: #fff;
   border-radius: 16rpx;
   overflow: hidden;
@@ -89,6 +167,18 @@
   color: #6C5CE7;
   font-size: 20rpx;
   border-radius: 8rpx;
+}
+/* 快闪类型徽章：浮在封面右上角 */
+.card-type {
+  position: absolute;
+  right: 16rpx;
+  top: 16rpx;
+  padding: 6rpx 18rpx;
+  border-radius: 20rpx;
+  background: rgba(0, 0, 0, .45);
+  color: #fff;
+  font-size: 20rpx;
+  line-height: 1.4;
 }
 .card-info {
   padding: 20rpx 24rpx;

@@ -3,24 +3,48 @@
   <view class="search-bar">
     <input
       class="search-input"
-      placeholder="搜索快闪店..."
+      placeholder="搜索联名快闪/特展/联名餐厅..."
       value="{{keyword}}"
       bindinput="onSearchInput"
       bindconfirm="onSearch"
     />
   </view>
 
-  <!-- 标签筛选 -->
-  <scroll-view scroll-x class="tag-bar" wx:if="{{tags.length > 0}}">
-    <view class="tag-item {{activeTag === '' ? 'active' : ''}}" bindtap="filterTag" data-tag="">全部</view>
+  <!-- 快闪类型筛选：与首页日历共用同一套类型，单选，空 = 全部 -->
+  <!-- 容器层加一个 catch:tap 仅做一次点击确认，绕过任何 wxml/js 缓存不一致导致的「点了无反应」哑故障 -->
+  <view class="type-bar" catch:tap="onTypeBarTap">
     <view
-      wx:for="{{tags}}"
-      wx:key="name"
-      class="tag-item {{activeTag === item.name ? 'active' : ''}}"
-      bindtap="filterTag"
-      data-tag="{{item.name}}"
-    >{{item.name}}({{item.count}})</view>
-  </scroll-view>
+      class="type-item {{activeType === '' ? 'active' : ''}}"
+      bindtap="filterType"
+      data-type=""
+    >全部</view>
+    <view
+      wx:for="{{typeOptions}}"
+      wx:key="value"
+      class="type-item {{activeType === item.value ? 'active' : ''}}"
+      bindtap="filterType"
+      data-type="{{item.value}}"
+    >{{item.label}}</view>
+  </view>
+
+  <!-- 标签筛选：固定一行铺满可视宽度，不做左右滚动；放不下时右侧出现「展开」查看全部 -->
+  <view class="tag-bar {{tagExpanded ? 'expanded' : ''}}" wx:if="{{tags.length > 0}}">
+    <view class="tag-inner">
+      <view class="tag-item {{activeTag === '' ? 'active' : ''}}" bindtap="filterTag" data-tag="">全部</view>
+      <view
+        wx:for="{{tags}}"
+        wx:key="name"
+        class="tag-item {{activeTag === item.name ? 'active' : ''}}"
+        bindtap="filterTag"
+        data-tag="{{item.name}}"
+      >{{item.name}}({{item.count}})</view>
+    </view>
+
+    <view class="tag-toggle" wx:if="{{showTagToggle}}" bindtap="toggleTags">
+      <text class="tag-toggle-text">{{tagExpanded ? '收起' : '展开'}}</text>
+      <text class="tag-toggle-arrow {{tagExpanded ? 'up' : ''}}">▾</text>
+    </view>
+  </view>
 
   <!-- 排序 -->
   <view class="sort-bar">
@@ -40,6 +64,8 @@
     >
       <image wx:if="{{item.cover}}" src="{{item.cover}}" mode="aspectFill" class="card-img" />
       <view wx:else class="card-img card-img--empty">🎌</view>
+      <!-- 快闪类型徽章：浮在封面右上角，一眼区分联名快闪/特展/联名餐厅 -->
+      <view class="card-type" wx:if="{{item.typeLabel}}">{{item.typeLabel}}</view>
       <view class="card-info">
         <text class="card-title">{{item.title}}</text>
         <text class="card-desc" wx:if="{{item.subtitle}}">{{item.subtitle}}</text>

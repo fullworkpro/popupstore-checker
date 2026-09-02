@@ -1,13 +1,14 @@
 """FastAPI 应用入口"""
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Response, Depends
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+
 from app.core.config import settings
 from app.core.database import init_db
 from app.api.auth import router as auth_router
@@ -16,6 +17,7 @@ from app.api.mini import router as mini_router
 from app.api.proxy import router as proxy_router
 from app.api.qiniu import router as qiniu_router
 from app.api.version import router as version_router, build_version_payload
+from app.crawler.scheduler import init_scheduler, shutdown_scheduler
 import os
 
 logging.basicConfig(level=logging.INFO)
@@ -24,34 +26,25 @@ logger = logging.getLogger("popstore")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期：启动时初始化数据库"""
+    """应用生命周期：启动时初始化数据库 + 注册爬虫定时任务"""
     logger.info("🚀 PopStore Platform 启动中...")
     init_db()
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     logger.info("✅ 数据库初始化完成")
+
+    # 爬虫定时任务依据数据库中的配置（schedule / enabled）注册
+    init_scheduler()
+
     yield
 
-
-def no_cache_dynamic(request: Request, response: Response):
-    """动态接口禁止缓存。
-
-    后端默认不输出 Cache-Control，导致浏览器 / 微信客户端 / 反向代理会按自身
-    策略缓存 GET 响应（例如首页门店列表、详情）。表现就是：后台改了数据，小程序
-    或浏览器却仍看到旧内容。这里对所有 /api/* 与 /version.json 统一加
-    `no-store`；若某路由自身已显式设置 Cache-Control（如 proxy-image 的图片
-    `max-age=86400`），由于该路由返回的是独立 Response 对象，其显式头会覆盖本
-    默认值，因此图片缓存行为不受影响。
-    """
-    path = request.url.path
-    if path.startswith("/api") or path == "/version.json":
-        response.headers["Cache-Control"] = "no-store"
+    shutdown_scheduler()
+    logger.info("👋 PopStore Platform 已停止")
 
 
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     lifespan=lifespan,
-    dependencies=[Depends(no_cache_dynamic)],
 )
 
 # CORS

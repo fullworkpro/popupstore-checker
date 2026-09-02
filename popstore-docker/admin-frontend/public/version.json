@@ -1,5 +1,5 @@
 {
   "source": "frontend",
-  "deploy_tag": "2026-08-27-admin-v3",
+  "deploy_tag": "2026-09-02-calendar-filter-archive-v1.4.0",
   "note": "前端部署指纹；应与后端 /api/v1/version 返回的 deploy_tag 一致。构建后由 nginx 在 /version.json 提供，用于确认 NAS 前端容器跑的是最新代码。"
 }

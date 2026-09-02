@@ -1,7 +1,32 @@
 <view class="container">
-  <!-- 顶部标题 -->
+  <!-- 顶部标题 + 筛选（右上角：城市 / 快闪类型 单选下拉） -->
   <view class="hd">
-    <view class="hd-title">🎏 快闪日历</view>
+    <view class="hd-top">
+      <view class="hd-title">🎏 快闪日历</view>
+
+      <view class="filters">
+        <picker mode="selector" range="{{cityOptions}}" value="{{cityIndex}}" bindchange="onCityChange">
+          <view class="filter-pill">
+            <text class="filter-text">{{cityOptions[cityIndex]}}</text>
+            <text class="filter-arrow">▾</text>
+          </view>
+        </picker>
+
+        <picker
+          mode="selector"
+          range="{{typeOptions}}"
+          range-key="label"
+          value="{{typeIndex}}"
+          bindchange="onTypeChange"
+        >
+          <view class="filter-pill">
+            <text class="filter-text">{{typeOptions[typeIndex].label}}</text>
+            <text class="filter-arrow">▾</text>
+          </view>
+        </picker>
+      </view>
+    </view>
+
     <view class="hd-sub">左右滑动切换月份 · 点日期看当天快闪</view>
   </view>
 
@@ -80,13 +105,15 @@
         <text class="card-desc" wx:if="{{item.cityText}}">📍 {{item.cityText}}</text>
         <view class="card-meta">
           <text class="card-date">📅 {{item.dateText}}</text>
+          <text class="card-type">{{item.typeLabel}}</text>
         </view>
       </view>
     </view>
   </view>
 
   <view class="empty" wx:if="{{!loading && visibleStores.length === 0}}">
-    <text>{{selectedDate ? '这一天没有快闪店 🎌' : '本月暂无快闪店 🎌'}}</text>
+    <text>{{emptyText}}</text>
+    <view class="empty-hint">可切换右上角的城市或快闪类型试试</view>
   </view>
   <view class="load-more" wx:if="{{loading}}"><text>加载中...</text></view>
 </view>

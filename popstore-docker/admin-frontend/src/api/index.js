@@ -56,7 +56,10 @@ export const uploadImage = (file) => {
   })
 }
 
-// 爬虫日志
+// 爬虫
+export const getCrawlerConfig = () => api.get('/admin/crawler/config')
+export const updateCrawlerConfig = (data) => api.put('/admin/crawler/config', data)
+export const runWeiboCrawler = () => api.post('/admin/crawler/weibo/run')
 export const getCrawlLogs = (params) => api.get('/admin/crawl-logs', { params })
 export const triggerCrawl = () => api.post('/admin/crawl/trigger')
 

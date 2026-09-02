@@ -41,6 +41,9 @@ _FINGERPRINT_FILES = [
     "main.py",
     "api/qiniu.py",
     "api/admin.py",
+    "crawler/weibo_crawler.py",
+    "crawler/scheduler.py",
+    "crawler/base_crawler.py",
 ]
 
 
@@ -75,5 +78,4 @@ def build_version_payload(extra=None):
 @router.get("", response_model=dict)
 @router.get("/", response_model=dict)
 def get_version():
-    # 与根路径 /version.json 保持一致，统一带上 source 标识，便于区分来源
-    return build_version_payload({"source": "backend"})
+    return build_version_payload()

@@ -8,15 +8,55 @@
 .hd {
   padding: 30rpx 30rpx 10rpx;
 }
+.hd-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
 .hd-title {
   font-size: 40rpx;
   font-weight: bold;
   color: #333;
+  flex-shrink: 0;
 }
 .hd-sub {
   font-size: 24rpx;
   color: #999;
   margin-top: 8rpx;
+}
+
+/* 右上角筛选：城市 / 快闪类型 单选下拉 */
+.filters {
+  display: flex;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+.filter-pill {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 10rpx 18rpx;
+  background: #fff;
+  border: 1rpx solid #e6e2f5;
+  border-radius: 30rpx;
+  box-shadow: 0 1rpx 6rpx rgba(0, 0, 0, .04);
+}
+.filter-pill:active {
+  background: #f6f3ff;
+}
+.filter-text {
+  font-size: 24rpx;
+  color: #6C5CE7;
+  max-width: 170rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filter-arrow {
+  font-size: 18rpx;
+  color: #6C5CE7;
+  line-height: 1;
 }
 
 /* 月历卡片 */
@@ -227,10 +267,20 @@
 }
 .card-meta {
   margin-top: 12rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
 }
 .card-date {
   font-size: 22rpx;
   color: #888;
+}
+.card-type {
+  font-size: 20rpx;
+  color: #6C5CE7;
+  background: #f0e8ff;
+  padding: 4rpx 14rpx;
+  border-radius: 8rpx;
 }
 
 .load-more, .empty {
@@ -238,4 +288,9 @@
   padding: 40rpx;
   color: #999;
   font-size: 26rpx;
+}
+.empty-hint {
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  color: #bbb;
 }

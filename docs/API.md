@@ -78,7 +78,27 @@ Authorization: Bearer {access_token}
 爬虫日志列表。
 
 ### POST /admin/crawl/trigger
-手动触发爬虫。
+手动触发全部爬虫。
+
+### GET /admin/crawler/config
+获取爬虫配置与运行态（后台「爬虫」页面数据源）：启用开关、二次元 IP 关键词列表、每关键词搜索页数、排程时刻、回看天数、各平台是否含 Cookie，以及上次成功/运行时间、待发布(draft)条数、最近一次日志。
+
+### PUT /admin/crawler/config
+更新爬虫配置（运行时生效并自动调整定时任务）。请求体字段均可选：
+- `enabled`：bool，总开关；
+- `weibo_keywords`：`["龙珠","原神",...]`，二次元 IP 关键词（全站搜索用）；
+- `weibo_max_pages`：int，每个关键词最多翻几页；
+- `schedule`：`["HH:MM", ...]`（Asia/Shanghai）；
+- `lookback_days`：int；
+- `weibo_cookie`：string（可选，留空即清空）；
+- `xhs_enabled` / `xhs_cookie`：小红书开关 / 凭据（规划中）；
+- `douyin_enabled` / `douyin_cookie`：抖音开关 / 凭据（规划中）。
+
+### POST /admin/crawler/weibo/run
+仅触发微博爬虫（全站搜索原创二次元快闪 + 时间窗追爬，依据数据库配置），返回发现 / 新增条数。
+
+### GET /admin/crawler/state
+兼容接口：内容同 `GET /admin/crawler/config` 的运行态部分。
 
 ### GET /admin/cities
 获取已有城市列表。

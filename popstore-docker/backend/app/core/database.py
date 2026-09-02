@@ -50,7 +50,7 @@ def get_db():
 
 def init_db():
     """创建所有表并初始化默认管理员（启动期异常不再阻塞整个后端）"""
-    from app.models.store import Store, CrawlLog  # noqa: F401
+    from app.models.store import Store, CrawlLog, CrawlerState, CrawlerConfig  # noqa: F401
     from app.models.admin import Admin, LoginAttempt  # noqa: F401
     try:
         Base.metadata.create_all(bind=engine)
