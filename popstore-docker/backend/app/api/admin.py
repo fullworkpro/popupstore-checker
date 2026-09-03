@@ -10,7 +10,10 @@ from sqlalchemy import func, desc
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.models.store import Store, StoreStatus, CrawlLog, CrawlerState, CrawlerConfig
+from app.models.store import (
+    Store, StoreStatus, CrawlLog, CrawlerState, CrawlerConfig,
+    DEFAULT_STORE_TYPE, STORE_TYPE_VALUES,
+)
 from app.models.admin import Admin
 from app.api.deps import get_current_admin
 from app.crawler.config_store import get_or_create_config, apply_config_update
@@ -61,6 +64,7 @@ def list_stores(
     status: Optional[str] = None,
     city: Optional[str] = None,
     source: Optional[str] = None,
+    store_type: Optional[str] = None,
     keyword: Optional[str] = None,
     db: Session = Depends(get_db),
     _: Admin = Depends(get_current_admin),
@@ -72,6 +76,15 @@ def list_stores(
         q = q.filter(Store.city == city)
     if source:
         q = q.filter(Store.source == source)
+    if store_type and store_type in STORE_TYPE_VALUES:
+        # store_type 列是后加的，老行值为 NULL，一律按默认类型（联名快闪）对待，
+        # 否则筛「联名快闪」时这些老数据会凭空消失。
+        if store_type == DEFAULT_STORE_TYPE:
+            q = q.filter(
+                (Store.store_type == DEFAULT_STORE_TYPE) | (Store.store_type.is_(None))
+            )
+        else:
+            q = q.filter(Store.store_type == store_type)
     if keyword:
         q = q.filter(Store.title.contains(keyword))
 

@@ -4,7 +4,7 @@ from typing import Optional, List
 from datetime import datetime
 import re
 
-from app.models.store import STORE_TYPE_VALUES, DEFAULT_STORE_TYPE
+from app.models.store import STORE_TYPE_VALUES, DEFAULT_STORE_TYPE, store_type_label
 
 # 纯日期 YYYY-MM-DD 检测（前端日期选择器回传的格式）
 _DATE_ONLY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -127,9 +127,19 @@ class StoreResponse(StoreBase):
     review_comment: Optional[str] = ""
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    # 类型中文名：由 store_type 自动推导，供后台列表直接展示。
+    # 缺了这个字段时前端 `store_type_label || '联名快闪'` 会永远走兜底，
+    # 导致列表里所有店都显示成「联名快闪」，看不出特展/联名餐厅。
+    store_type_label: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+    @validator("store_type_label", always=True)
+    def _fill_store_type_label(cls, v, values):
+        if v:
+            return v
+        return store_type_label(values.get("store_type") or DEFAULT_STORE_TYPE)
 
 
 class StoreListResponse(BaseModel):

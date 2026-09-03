@@ -23,6 +23,11 @@
             <el-option v-for="c in cities" :key="c" :label="c" :value="c" />
           </el-select>
         </el-form-item>
+        <el-form-item label="快闪类型">
+          <el-select v-model="filters.store_type" clearable placeholder="全部" style="width:130px" @change="fetchList">
+            <el-option v-for="t in storeTypes" :key="t.value" :label="t.label" :value="t.value" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="来源">
           <el-select v-model="filters.source" clearable placeholder="全部" style="width:120px" @change="fetchList">
             <el-option label="手动" value="manual" />
@@ -48,7 +53,7 @@
         <el-table-column prop="city" label="城市" width="80" />
         <el-table-column prop="store_type_label" label="类型" width="100">
           <template #default="{ row }">
-            <el-tag size="small" type="warning">{{ row.store_type_label || '联名快闪' }}</el-tag>
+            <el-tag size="small" type="warning">{{ typeLabel(row) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="source" label="来源" width="80">
@@ -119,7 +124,15 @@ const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 const cities = ref([])
-const filters = reactive({ status: '', city: '', source: '', keyword: '' })
+// 快闪类型：与后端 models/store.py 的 STORE_TYPES 保持一致
+const storeTypes = [
+  { value: 'popup', label: '联名快闪' },
+  { value: 'exhibition', label: '特展' },
+  { value: 'restaurant', label: '联名餐厅' },
+]
+const typeMap = storeTypes.reduce((m, t) => { m[t.value] = t.label; return m }, {})
+
+const filters = reactive({ status: '', city: '', source: '', store_type: '', keyword: '' })
 
 onMounted(async () => {
   await fetchList()
@@ -160,6 +173,9 @@ const handleDelete = async (id) => {
   } catch (e) { /* */ }
 }
 
+// 类型中文名：优先用后端返回的 store_type_label；缺失时按 store_type 本地兜底，
+// 避免后端字段缺失时整列都被兜底成「联名快闪」而看不出特展/联名餐厅
+const typeLabel = (row) => row.store_type_label || typeMap[row.store_type] || '联名快闪'
 const sourceLabel = (s) => ({
   manual: '手动', crawler: '爬虫', wechat: '微信', xiaohongshu: '小红书', weibo: '微博',
 }[s] || s)
