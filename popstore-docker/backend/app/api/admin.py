@@ -2,9 +2,9 @@
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 
@@ -19,6 +19,7 @@ from app.api.deps import get_current_admin
 from app.crawler.config_store import get_or_create_config, apply_config_update
 from app.crawler.scheduler import sync_scheduler
 from app.services.archive import archive_expired_stores
+from app.crawler.curated_importer import validate_items, import_items
 from app.schemas.schemas import (
     StoreCreate, StoreUpdate, StoreResponse, StoreListResponse,
     ReviewRequest, CrawlLogResponse, CrawlLogListResponse,
@@ -206,6 +207,59 @@ def _detect_image_ext(content: bytes) -> Optional[str]:
         if content[: len(sig)] == sig:
             return ext
     return None
+
+
+@router.post("/stores/import-json", response_model=dict)
+def import_json_stores(
+    payload: Any = Body(
+        ...,
+        description="JSON 正文，两种写法均可：{batch?, items:[...]} 或直接 [...]",
+        examples=[{"batch": "2026-09-10-shanghai", "items": [{"title": "《孤独摇滚》快闪"}]}],
+    ),
+    dry_run: bool = Query(False, description="true=只校验预览，不落库"),
+    db: Session = Depends(get_db),
+    _: Admin = Depends(get_current_admin),
+):
+    """导入策展 JSON（WorkBuddy / content-hunter 产出）到待发布队列。
+
+    - `dry_run=true`：只逐条校验，返回每条是否合格、重复、以及提示，不写库。
+    - 不带参数：校验后直接导入，成功的条目落 `status=DRAFT`（小程序不可见，后台审核后发布）。
+    - 缺原文链接 / 日期 / 地址只做提示，不拦截（方便后续人工补图补信息）。
+    """
+    if isinstance(payload, list):
+        items, batch = payload, ""
+    elif isinstance(payload, dict):
+        items = payload.get("items") or []
+        batch = payload.get("batch") or ""
+    else:
+        raise HTTPException(status_code=400, detail="JSON 应为 {items:[...]} 或 [...]")
+
+    if not isinstance(items, list):
+        raise HTTPException(status_code=400, detail="items 必须是数组")
+    if not items:
+        raise HTTPException(status_code=400, detail="items 为空，没有可导入的条目")
+
+    results = validate_items(db, items, batch)
+    levels = [r["level"] for r in results]
+    invalid = sum(1 for x in levels if x == "error")
+    duplicated = sum(1 for x in levels if x == "dup")
+    importable = sum(1 for x in levels if x in ("ok", "warn"))
+
+    added, errors = 0, []
+    if not dry_run and importable:
+        good = [items[r["index"]] for r in results if r["level"] in ("ok", "warn")]
+        _total, added, errors = import_items(db, good, batch, "admin-json-import")
+
+    return {
+        "total": len(items),
+        "importable": importable,
+        "duplicated": duplicated,
+        "invalid": invalid,
+        "added": added,
+        "failed": len(errors),
+        "errors": errors,
+        "items": results,
+    }
 
 
 @router.post("/upload", response_model=dict)

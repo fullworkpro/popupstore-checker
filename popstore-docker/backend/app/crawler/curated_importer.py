@@ -160,6 +160,117 @@ class CuratedImporter(BaseCrawler):
         return new_count
 
 
+def validate_items(db: Session, raw_items: List[Dict], batch: str = "") -> List[Dict]:
+    """逐条校验（不落库），供后台「导入 JSON」预览用。
+
+    返回每项：
+      {index, title, store_type, city, venue, source_url, level, issues}
+      level: ok=可导入 / warn=可导入但有提示 / dup=将跳过(重复) / error=将跳过(缺字段)
+    """
+    results: List[Dict] = []
+    seen_fp: Dict[str, int] = {}
+
+    # 库内已有条目（标题指纹比对只在待发布范围内做，与 save_items 口径一致）
+    draft_titles = [
+        (s.id, title_fingerprint(s.title))
+        for s in db.query(Store).filter(Store.status == StoreStatus.DRAFT.value).all()
+    ]
+
+    for i, it in enumerate(raw_items):
+        it = it or {}
+        title = (it.get("title") or "").strip()
+        url = (it.get("source_url") or "").strip()
+        base = {
+            "index": i,
+            "title": title or f"# {i}（无标题）",
+            "store_type": it.get("store_type") or "popup",
+            "city": (it.get("city") or "").strip(),
+            "venue": (it.get("venue") or "").strip(),
+            "source_url": url,
+        }
+
+        if not title:
+            results.append({**base, "level": "error", "issues": ["缺少 title"]})
+            continue
+
+        fp = title_fingerprint(title)
+
+        # 同批次内重复
+        if fp in seen_fp:
+            results.append({
+                **base, "level": "dup",
+                "issues": [f"与本文件第 {seen_fp[fp] + 1} 条标题重复"],
+            })
+            continue
+        seen_fp[fp] = i
+
+        # 与库中已有条目重复
+        dup_reason = None
+        if url and db.query(Store).filter(Store.source_url == url).first():
+            dup_reason = "原文链接已存在"
+        else:
+            for _sid, exist_fp in draft_titles:
+                if exist_fp == fp:
+                    dup_reason = "标题与待发布中条目重复"
+                    break
+        if dup_reason:
+            results.append({**base, "level": "dup", "issues": [dup_reason]})
+            continue
+
+        # 可导入，但给出提示（不拦截 —— 缺链接也要能导，方便后续补图）
+        issues: List[str] = []
+        if not url:
+            issues.append("缺原文链接（source_url），后续传图不便")
+        if not it.get("start_date"):
+            issues.append("缺开始日期")
+        if not it.get("end_date"):
+            issues.append("缺结束日期")
+        if not (it.get("address") or "").strip():
+            issues.append("缺详细地址")
+        try:
+            conf = it.get("confidence")
+            if conf is not None and float(conf) < 0.6:
+                issues.append(f"置信度偏低({conf})，建议人工核实")
+        except (TypeError, ValueError):
+            pass
+
+        results.append({**base, "level": "warn" if issues else "ok", "issues": issues})
+
+    return results
+
+
+def import_items(db: Session, raw_items: List[Dict], batch: str = "",
+                 source_name: str = "") -> Tuple[int, int, List[str]]:
+    """从内存列表导入（不经文件）。返回 (总条数, 新增条数, 错误列表)。"""
+    errors: List[str] = []
+    normalized: List[Dict] = []
+    for i, it in enumerate(raw_items):
+        try:
+            if not (it or {}).get("title"):
+                errors.append(f"#{i} 缺少 title，已跳过")
+                continue
+            normalized.append(normalize(it, batch))
+        except Exception as e:
+            errors.append(f"#{i} 解析失败: {e}")
+
+    importer = CuratedImporter(db)
+    added = importer.save_items(normalized)
+
+    log = CrawlLog(
+        source=CuratedImporter.source,
+        keyword=(source_name or batch or "admin-import")[:100],
+        total_found=len(raw_items),
+        new_added=added,
+        error_count=len(errors),
+        error_detail="\n".join(errors),
+        status="failed" if errors and not added else ("partial" if errors else "success"),
+    )
+    db.add(log)
+    db.commit()
+    logger.info("[curated] 后台导入 %s：%d 条，新增 %d 条", source_name or batch, len(raw_items), added)
+    return len(raw_items), added, errors
+
+
 def load_items(path: str) -> List[Dict]:
     """读取 JSON 文件，返回 items 列表（兼容 {items:[...]} 与裸列表两种写法）。"""
     with open(path, "r", encoding="utf-8") as f:

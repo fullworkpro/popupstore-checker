@@ -47,6 +47,11 @@ export const updateStore = (id, data) => api.put(`/admin/stores/${id}`, data)
 export const deleteStore = (id) => api.delete(`/admin/stores/${id}`)
 export const reviewStore = (id, data) => api.post(`/admin/stores/${id}/review`, data)
 
+// 策展 JSON 导入：payload 支持 {batch, items:[...]} 或裸数组 [...]
+// dryRun=true 只校验预览，false 才落库（落库后为 DRAFT 待审核）
+export const importJsonStores = (payload, dryRun = true) =>
+  api.post('/admin/stores/import-json', payload, { params: { dry_run: dryRun } })
+
 // 上传
 export const uploadImage = (file) => {
   const fd = new FormData()

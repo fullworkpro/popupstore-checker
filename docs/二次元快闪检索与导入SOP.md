@@ -147,7 +147,52 @@ docker exec popstore-backend python scripts/import_curated.py
 
 ---
 
-## 七、常见问题
+## 七、方式 B：AI 对话（content-hunter）直接 curl 打到后台
+
+如果你希望检索对话**不落文件、直接传进后台**，让它调这个接口即可（v1.4.6+）：
+
+```
+POST /api/v1/admin/stores/import-json?dry_run=true|false
+```
+
+- `dry_run=true` → 只校验，返回每条是否合格/重复，不落库
+- `dry_run=false` → 校验后直接导入，成功条目为 `DRAFT`
+- 鉴权：JWT Bearer，先登录换 token
+- 请求体两种写法都支持：`{batch, items:[...]}` 或裸数组 `[...]`
+
+```bash
+# 1) 登录拿 token
+TOKEN=$(curl -s -X POST http://<NAS IP>:9114/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"<你的密码>"}' | jq -r .access_token)
+
+# 2) 预览（强烈建议先跑一次）
+curl -X POST "http://<NAS IP>:9114/api/v1/admin/stores/import-json?dry_run=true" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d @2026-09-10-shanghai.json
+
+# 3) 确认无误后导入（去掉 dry_run）
+curl -X POST "http://<NAS IP>:9114/api/v1/admin/stores/import-json" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d @2026-09-10-shanghai.json
+```
+
+⚠️ **前提**：AI 对话所在的机器要能访问到 `9114` 端口。沙箱网络受限时可能不通，
+那就退回**方式 A**（后台页面导入，最稳）。
+
+### 让 content-hunter 输出正确的字段
+
+在提示词里务必加这一句：
+
+> **每条必须带 `source_url`（原文链接）**。这是后续人工传图、核实信息的入口，
+> 没有链接的条目无法追溯来源。拿不到就标 `"confidence": 0.5` 并在 `tags` 里写明来源平台。
+
+导入时**缺链接只警告不拦截**（你要靠它传图，不能因为缺链接就导不进来），
+但校验结果里会明确提示「缺原文链接」，且列表里可一键点开。
+
+---
+
+## 八、常见问题
 
 **Q：导入报 `no such column: store_type`**
 本地旧库（8/13 之前）缺列。跑一次自动迁移即可（幂等、无损）：
