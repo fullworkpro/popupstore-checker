@@ -491,6 +491,11 @@ class WeiboCrawler(BaseCrawler):
                 if not is_popup_post(text):
                     continue
                 ok_anime, matched = is_anime_post(text, self.keywords)
+                if not ok_anime and keyword and keyword in text:
+                    # 场馆优先：搜索词本身（如「静安大悦城」「动漫星城」）命中正文即收录。
+                    # 理由：IP 名写法杂、召回低；场馆是固定点位，命中即可信且自带定位信息。
+                    # 兼容：关键词仍为 IP 名时 is_anime_post 已命中，此分支不会触发。
+                    ok_anime, matched = True, [keyword]
                 if not ok_anime:
                     continue
                 created = parse_weibo_time(mb.get("created_at"))

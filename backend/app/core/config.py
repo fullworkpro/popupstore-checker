@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.2.0"
     # 部署标签：每次有意义的改动请手动 +1（如 2026-08-27-qiniu-admin-v1）。
     # 用于 /api/v1/version 接口与前端 /version.json 比对，确认 NAS 跑的是不是最新代码。
-    APP_DEPLOY_TAG: str = "2026-09-03-admin-store-type-filter-v1.4.4"
+    APP_DEPLOY_TAG: str = "2026-09-10-curated-import-v1.4.5"
     DEBUG: bool = True
 
     # ── 数据库 ──
@@ -83,6 +83,11 @@ class Settings(BaseSettings):
     # 方案：针对「每个二次元 IP 关键词」在全站搜索原创微博，
     # 筛出正文同时含「快闪/快闪店」且命中某一 IP 关键词的原创微博，落入待发布。
     # 不限定单一账号（名创优品只是举例）——要覆盖全站所有品牌/IP 的二次元快闪。
+    #
+    # 【场馆优先 v1.4.5】关键词列表也可以直接填「场馆名」（百联ZX创趣场 / 静安大悦城 /
+    # 动漫星城 / 时尚天河 …）。weibo_crawler._collect_posts 已支持：命中 IP 词或
+    # 搜索词本身出现在正文中即收录，命中的场馆名会作为 tag 写入待发布。
+    # 场馆名召回率高于 IP 名（IP 写法杂、官方公告未必带 IP 全称），推荐与 IP 词混填。
     # 仅当服务器出口 IP 被微博 WAF(SHANHAI) 拦截(HTTP 432) 时，
     # 在「爬虫」页面填写浏览器 Cookie 即可绕过。
     CRAWLER_WEIBO_KEYWORDS: List[str] = [

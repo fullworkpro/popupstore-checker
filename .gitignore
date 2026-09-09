@@ -1,6 +1,9 @@
 __pycache__/
 *.py[cod]
 *.db
+# 改库前的安全备份（如 popstore.db.bak-20260910-010426），不入库
+*.db.bak-*
+*.bak-*
 .env
 venv/
 node_modules/
