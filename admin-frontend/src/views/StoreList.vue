@@ -127,8 +127,11 @@
         <el-button @click="fileInput.click()">选择 JSON 文件</el-button>
         <el-button :loading="checking" :disabled="!importText" @click="checkImport">检查</el-button>
         <el-button type="primary" :loading="importing"
-                   :disabled="!importResult || !importResult.importable" @click="doImport">
-          确认导入
+                   :disabled="!selectedRows.length" @click="doImport">
+          确认导入<span v-if="selectedRows.length">（{{ selectedRows.length }} 条）</span>
+        </el-button>
+        <el-button v-if="importResult" size="small" @click="toggleSelectAll">
+          {{ selectedRows.length ? '取消全选' : '全选可导入' }}
         </el-button>
         <span v-if="fileName" style="color:#909399;font-size:12px">{{ fileName }}</span>
       </div>
@@ -143,12 +146,16 @@
           <el-tag type="success" size="small">可导入 {{ importResult.importable }}</el-tag>
           <el-tag type="warning" size="small">重复 {{ importResult.duplicated }}</el-tag>
           <el-tag type="danger" size="small">不合格 {{ importResult.invalid }}</el-tag>
+          <el-tag type="primary" size="small">已勾选 {{ selectedRows.length }}</el-tag>
           <span v-if="importDone" style="color:#67c23a;font-weight:600">
             已入库 {{ importResult.added }} 条
           </span>
         </div>
 
-        <el-table :data="importResult.items" size="small" max-height="320" border>
+        <el-table ref="resultTable" :data="importResult.items" size="small" max-height="320" border
+                  row-key="index" @selection-change="onSelChange">
+          <el-table-column type="selection" width="44" reserve-selection
+                           :selectable="row => row.level === 'ok' || row.level === 'warn'" />
           <el-table-column type="index" label="#" width="46" />
           <el-table-column prop="title" label="标题" min-width="190" show-overflow-tooltip />
           <el-table-column label="结果" width="86">
@@ -180,7 +187,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, nextTick, watch } from 'vue'
 import { getStores, deleteStore, reviewStore, getCities, importJsonStores } from '../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -209,6 +216,10 @@ const checking = ref(false)
 const importing = ref(false)
 const importResult = ref(null)   // 检查结果 / 导入结果
 const importDone = ref(false)    // 是否已真正导入过
+// 勾选导入：rawItems 保存原始条目，勾选行的 index 用来回取原始数据
+const resultTable = ref(null)
+const rawItems = ref([])
+const selectedRows = ref([])
 
 const openImport = () => {
   importVisible.value = true
@@ -218,6 +229,38 @@ const resetImport = () => {
   fileName.value = ''
   importResult.value = null
   importDone.value = false
+  rawItems.value = []
+  selectedRows.value = []
+}
+
+// 检查结果渲染后，默认勾选「可导入」的条目（ok / warn），重复与不合格不勾
+const selectImportable = async () => {
+  await nextTick()
+  const tbl = resultTable.value
+  if (!tbl) return
+  tbl.clearSelection()
+  ;(importResult.value?.items || []).forEach(r => {
+    if (r.level === 'ok' || r.level === 'warn') tbl.toggleRowSelection(r, true)
+  })
+}
+
+const onSelChange = (rows) => { selectedRows.value = rows || [] }
+
+// 改了 JSON 内容/换文件后，旧勾选结果失效，强制重新检查
+watch(importText, () => {
+  if (!importResult.value) return
+  importResult.value = null
+  importDone.value = false
+  rawItems.value = []
+  selectedRows.value = []
+})
+
+const toggleSelectAll = () => {
+  const tbl = resultTable.value
+  if (!tbl) return
+  const importable = (importResult.value?.items || []).filter(r => r.level === 'ok' || r.level === 'warn')
+  if (selectedRows.value.length) tbl.clearSelection()
+  else importable.forEach(r => tbl.toggleRowSelection(r, true))
 }
 
 const onPickFile = (e) => {
@@ -258,6 +301,8 @@ const checkImport = async () => {
     const { data } = await importJsonStores({ items }, true)
     importResult.value = data
     importDone.value = false
+    rawItems.value = items
+    selectImportable()
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '检查失败')
   } finally {
@@ -266,13 +311,23 @@ const checkImport = async () => {
 }
 
 const doImport = async () => {
-  const items = parsePayload()
-  if (!items) return
+  // 只导入勾选的条目：按勾选行的 index 回取原始数据
+  const picked = selectedRows.value
+    .map(r => rawItems.value[r.index])
+    .filter(Boolean)
+  if (!picked.length) {
+    ElMessage.warning('请至少勾选一条要导入的快闪店')
+    return
+  }
   importing.value = true
   try {
-    const { data } = await importJsonStores({ items }, false)
+    const { data } = await importJsonStores({ items: picked }, false)
     importResult.value = data
     importDone.value = true
+    rawItems.value = picked
+    selectedRows.value = []
+    await nextTick()
+    resultTable.value?.clearSelection()
     fetchList()
     const skipped = (data.duplicated || 0) + (data.invalid || 0) + (data.failed || 0)
     await ElMessageBox.alert(
