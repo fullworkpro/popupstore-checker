@@ -180,11 +180,16 @@ def validate_items(db: Session, raw_items: List[Dict], batch: str = "") -> List[
         it = it or {}
         title = (it.get("title") or "").strip()
         url = (it.get("source_url") or "").strip()
+        # 多城市预览：主城市 + 「等 N 城」
+        _cities, main_city, _dist, main_addr = _build_cities(it)
+        city_label = main_city
+        if len(_cities) > 1:
+            city_label = f"{main_city} 等 {len(_cities)} 城"
         base = {
             "index": i,
             "title": title or f"# {i}（无标题）",
             "store_type": it.get("store_type") or "popup",
-            "city": (it.get("city") or "").strip(),
+            "city": city_label,
             "venue": (it.get("venue") or "").strip(),
             "source_url": url,
         }
@@ -225,7 +230,7 @@ def validate_items(db: Session, raw_items: List[Dict], batch: str = "") -> List[
             issues.append("缺开始日期")
         if not it.get("end_date"):
             issues.append("缺结束日期")
-        if not (it.get("address") or "").strip():
+        if not (main_addr or "").strip():
             issues.append("缺详细地址")
         try:
             conf = it.get("confidence")
@@ -282,6 +287,56 @@ def load_items(path: str) -> List[Dict]:
     raise ValueError(f"不支持的 JSON 结构：{path}")
 
 
+def _build_cities(item: Dict):
+    """解析多城市，兼容三种写法，返回 (cities列表, 主city, 主district, 主address)。
+
+    1) 对象数组（推荐，可带分区/地址）：
+       "cities": [{"city":"上海","district":"静安区","address":"静安大悦城"},
+                  {"city":"广州","district":"天河区","address":"正佳广场"}]
+    2) 字符串数组（只有城市名，地址后补）：
+       "cities": ["上海", "广州"]
+    3) 单值（旧写法，仍支持）："city": "上海", "district": "...", "address": "..."
+
+    cities[0] 作为主城市/主地址（Store.city / district / address），
+    保证城市筛选与详情页「地点1」正常；其余地点走 cities 数组。
+    """
+    out = []
+    raw = item.get("cities")
+
+    if isinstance(raw, list):
+        for c in raw:
+            if isinstance(c, dict):
+                name = (c.get("city") or "").strip()
+                if not name:
+                    continue
+                out.append({
+                    "city": name,
+                    "district": (c.get("district") or "").strip(),
+                    "address": (c.get("address") or "").strip(),
+                })
+            elif isinstance(c, str) and c.strip():
+                out.append({"city": c.strip(), "district": "", "address": ""})
+
+    if not out:
+        name = (item.get("city") or "").strip()
+        if name:
+            out = [{
+                "city": name,
+                "district": (item.get("district") or "").strip(),
+                "address": (item.get("address") or "").strip(),
+            }]
+
+    # 只有一个地点时，顶层 district/address 归属明确，回填补全
+    if len(out) == 1:
+        if not out[0]["district"]:
+            out[0]["district"] = (item.get("district") or "").strip()
+        if not out[0]["address"]:
+            out[0]["address"] = (item.get("address") or "").strip()
+
+    first = out[0] if out else {}
+    return out, first.get("city", ""), first.get("district", ""), first.get("address", "")
+
+
 def normalize(item: Dict, batch: str = "") -> Dict:
     """把 WorkBuddy 的条目字段映射成 Store 入库字段（不做 LLM 抽取，只做格式化）。"""
     title = (item.get("title") or "").strip()[:200] or "无标题"
@@ -296,13 +351,8 @@ def normalize(item: Dict, batch: str = "") -> Dict:
     if "快闪" not in tags:
         tags.append("快闪")
 
-    city = (item.get("city") or "").strip()
-    district = (item.get("district") or "").strip()
-    address = (item.get("address") or "").strip()
-    cities_json = json.dumps(
-        ([{"city": city, "district": district, "address": address}] if city else []),
-        ensure_ascii=False,
-    )
+    cities_list, city, district, address = _build_cities(item)
+    cities_json = json.dumps(cities_list, ensure_ascii=False)
 
     confidence = item.get("confidence")
     try:

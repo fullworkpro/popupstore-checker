@@ -75,6 +75,41 @@ JSON 契约（完整字段说明见 backend/app/crawler/curated_importer.py 文�
 | 换时间窗 | 「最近一周」→ 「未来一个月」「本周末」 |
 | 换类型 | `store_type`：`popup`（联名快闪）/ `exhibition`（特展）/ `restaurant`（联名餐厅） |
 | 提高质量门槛 | 加一句「只保留 confidence ≥ 0.7 的条目」 |
+| 全国多城巡回 | 见下方「多城市写法」，用 `cities` 数组，一条记录承载多城 |
+
+### 多城市写法（一个活动跑多个城市时）
+
+**不要**拆成多条（标题雷同会被去重规则误判成重复），改成：
+
+```json
+{
+  "title": "三丽鸥全国巡展",
+  "store_type": "popup",
+  "cities": [
+    { "city": "上海", "district": "静安区", "address": "静安大悦城 3F" },
+    { "city": "广州", "district": "天河区", "address": "正佳广场 1F" }
+  ],
+  "start_date": "2026-09-25",
+  "end_date": "2026-10-20",
+  "source_url": "https://weibo.com/xxx/yyy"
+}
+```
+
+- 只写城市名也行：`"cities": ["上海", "广州"]`（地址后补）
+- `cities[0]` 自动成为主城市/主地址；小程序详情页列出「地点1 / 地点2 …」，
+  城市筛选命中任一地点都能搜到
+- 旧的单值 `city` / `district` / `address` 写法仍然有效
+
+### 快闪类型怎么填（`store_type`）
+
+| 填这个值 | 后台/小程序显示 | 什么时候用 |
+|---|---|---|
+| `popup` | 联名快闪 | IP 联名、限时快闪店、周边贩售（**默认**，可省略） |
+| `exhibition` | 特展 | 展览、展映、艺术展、纪念展 |
+| `restaurant` | 联名餐厅 | 主题餐厅、联名咖啡厅、餐饮业态 |
+
+拿不准时按**主要业态**定：主要卖周边 → `popup`；主要看展 → `exhibition`；
+主要堂食喝饮品 → `restaurant`。填错或不填都按 `popup`。
 
 ---
 
