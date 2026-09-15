@@ -287,6 +287,7 @@ class WeiboCrawler(BaseCrawler):
         self.retry_backoff = RETRY_BACKOFF
         self._last_req_ts = 0.0  # 上次发请求的时间戳（用于间隔控制）
         self._auto_sub = False    # 是否成功自动获取了访客 SUB（用于 ok=-100 诊断）
+        self._manual_cookie = False  # 是否使用了后台手填的 Cookie（v1.4.9，用于诊断区分）
         self.session = requests.Session()
         self.session.headers.update({
             "User-Agent": settings.CRAWLER_USER_AGENT,
@@ -295,7 +296,7 @@ class WeiboCrawler(BaseCrawler):
             "Referer": "https://m.weibo.cn/",
         })
         # Cookie 不在初始化时设置；统一在 run() 开头由 _ensure_visitor_sub() 决定：
-        # 优先用当场新领的访客 SUB，失败才回退用户填写的 Cookie。
+        # v1.4.9 起手填 Cookie 优先，未填时才自动领访客 SUB。
 
     # ── 网络：自动领取访客身份（免登录 Cookie）──
     def _fetch_visitor_sub(self) -> Optional[Tuple[str, Optional[str]]]:
@@ -361,43 +362,53 @@ class WeiboCrawler(BaseCrawler):
             logger.warning("[weibo] 自动获取访客 SUB 失败: %s", e)
             return None
 
-    def _ensure_visitor_sub(self) -> bool:
-        """领取访客 SUB/SUBP 并作为【首选】凭证，彻底解决「填了过期 Cookie 反而全 -100/432」的坑。
+    def _apply_manual_cookie(self) -> bool:
+        """使用后台填写的（登录态）Cookie 作为唯一凭证。返回是否应用成功。"""
+        ck = (self.cookie or "").strip()
+        if not ck:
+            return False
+        self.session.cookies.clear()
+        self.session.headers["Cookie"] = ck
+        self._auto_sub = False
+        self._manual_cookie = True
+        logger.info("[weibo] 凭证：使用后台填写的微博 Cookie（登录态，读时间线/搜索权限最高）")
+        return True
 
-        关键修正（旧版本的重大缺陷）：
-          旧逻辑是「只要用户在页面填了 Cookie 就跳过 visitor 自动领取」。
-          但用户手动填的 Cookie 往往是几天前复制的、早已过期，于是每条请求都
-          返回 ok=-100 / HTTP 432（需要登录态）——表现就是「重新构建了还是被限流」。
-
-        新逻辑：
-          1) 无论用户是否填 Cookie，都先尝试领取一个【当场新领】的访客 SUB+SUBP；
-          2) 成功则把它作为唯一凭证（清掉任何手工 Cookie，避免过期登录态干扰）；
-          3) 仅当 genvisitor2 自身失败（出口 IP 被微博 WAF 物理拦截）时，才回退
-             到用户填写的 Cookie；二者皆无则裸请求（搜索大概率 -100，属预期）。
-        """
+    def _apply_visitor_sub(self) -> bool:
+        """领取当场新领的访客 SUB/SUBP 作为凭证（免登录），成功返回 True。"""
         res = self._fetch_visitor_sub()
-        if res:
-            sub, subp = res
-            self.session.cookies.clear()
-            self.session.cookies.set("SUB", sub, domain=".weibo.com")
-            if subp:
-                self.session.cookies.set("SUBP", subp, domain=".weibo.com")
-            # 清掉可能的手工 Cookie 头，让 cookie jar 成为唯一权威来源
-            self.session.headers.pop("Cookie", None)
-            self._auto_sub = True
-            logger.info("[weibo] 已自动获取访客 SUB%s（首选凭证，不受你填写的 Cookie 是否过期影响）",
-                        "/SUBP" if subp else "")
+        if not res:
+            return False
+        sub, subp = res
+        self.session.cookies.clear()
+        self.session.cookies.set("SUB", sub, domain=".weibo.com")
+        if subp:
+            self.session.cookies.set("SUBP", subp, domain=".weibo.com")
+        self.session.headers.pop("Cookie", None)
+        self._auto_sub = True
+        self._manual_cookie = False
+        logger.info("[weibo] 凭证：已自动领取访客 SUB%s", "/SUBP" if subp else "")
+        return True
+
+    def _ensure_visitor_sub(self) -> bool:
+        """决定本次运行使用哪套凭证（v1.4.9 修正）。
+
+        旧逻辑的重大缺陷：「访客 SUB 优先，手填 Cookie 仅在领取失败时兜底」，且领到访客 SUB 后
+        会 clear 掉手工 Cookie。实测（2026-09-16）：
+          - 无 SUB 的游客 Cookie      → 账号时间线 HTTP 432（WAF 拦截）
+          - 访客 SUB+SUBP（genvisitor2）→ HTTP 200 但 ok=-100、0 条（能过 WAF，读不到内容）
+          - 登录态 Cookie（浏览器直连） → 正常返回 cards
+        即访客 SUB 只能破 432，内容仍要登录态；旧的"优先访客"会让用户在后台填的登录 Cookie
+        完全失效，表现为「填了 Cookie 还是 0 条」。
+
+        新逻辑：① 填了 Cookie → 直接用（登录态权限最高）；② 未填 → 领访客 SUB；③ 都无 → 裸请求。
+        """
+        if self._apply_manual_cookie():
             return True
-        # genvisitor2 失败：回退到用户手动 Cookie（若有）
-        if self.cookie:
-            self.session.cookies.clear()
-            self.session.headers["Cookie"] = self.cookie
-            logger.warning(
-                "[weibo] 自动获取访客 SUB 失败（出口 IP 或被 WAF 拦截），回退使用你填写的 Cookie"
-            )
+        if self._apply_visitor_sub():
             return True
         logger.warning(
-            "[weibo] 自动获取访客 SUB 失败且未填 Cookie（出口 IP 可能被 WAF 拦截），将尝试无 Cookie 请求"
+            "[weibo] 未填写 Cookie 且自动领取访客 SUB 失败（出口 IP 可能被 WAF 拦截），将尝试无 Cookie 请求"
         )
         return False
 
@@ -664,9 +675,7 @@ class WeiboCrawler(BaseCrawler):
             since = now - timedelta(days=self.lookback_days)
         until = now
 
-        # 自动领取访客 SUB 并作为【首选】凭证（无论是否填了 Cookie 都会先尝试领取，
-        # 解决「填了过期 Cookie 反而全 -100」的坑）。NAS 住宅 IP 一般直接成功，
-        # 数据中心 IP 若被 WAF 物理拦截则自动回退到用户手动 Cookie。
+        # 凭证选择（v1.4.9）：后台填写的登录态 Cookie 优先，未填时才自动领访客 SUB。
         self._ensure_visitor_sub()
 
         # 模式选择（v1.3.1：两种模式各自独立开关，可同时启用）：
@@ -722,7 +731,14 @@ class WeiboCrawler(BaseCrawler):
 
         # ok=-100 诊断：区分「访客 SUB 也未生效（出口 IP 被 WAF 拦）/ 已用访客 SUB 仍被限流」
         if any("ok!=-100" in e for e in errors):
-            if not self._auto_sub:
+            if self._manual_cookie:
+                logger.error(
+                    "[weibo] ⚠️ 微博返回 ok=-100：本次用的是「爬虫」页面手填的 Cookie，仍被判为未登录，"
+                    "多为 Cookie 已过期或复制不完整（务必含 SUB，最好连 SUBP 一起）。"
+                    "请重新登录 m.weibo.cn 后复制整串 Cookie；若反复无效，可清空该输入框，"
+                    "让系统自动领取访客 SUB（能过 WAF，但账号时间线大概率仍 -100）。"
+                )
+            elif not self._auto_sub:
                 logger.error(
                     "[weibo] ⚠️ 微博返回 ok=-100，且自动访客 SUB 也未能生效："
                     "多为出口 IP 被微博 WAF(SHANHAI) 物理拦截（常见于数据中心/云服务器 IP），"
@@ -738,7 +754,13 @@ class WeiboCrawler(BaseCrawler):
         # 说明访客 SUB/SUBP 这一对凭证未被接受——最常见是 genvisitor2 未领到有效值，
         # 或本机出口 IP 被 WAF 物理拉黑（云/数据中心 IP 高发）。
         if any("HTTP 432" in e for e in errors):
-            if self._auto_sub:
+            if self._manual_cookie:
+                logger.error(
+                    "[weibo] ⚠️ 微博接口返回 HTTP 432：本次用的是「爬虫」页面手填的 Cookie，仍被 WAF(山海) 拦截。"
+                    "多为 Cookie 过期/不完整（缺 SUB 或 SUBP），或 NAS 出口 IP 被拉黑。"
+                    "请重新登录后复制完整 Cookie；若 NAS 走云/机房 IP，建议改用本地宽带机器跑爬虫。"
+                )
+            elif self._auto_sub:
                 logger.error(
                     "[weibo] ⚠️ 微博接口返回 HTTP 432：已自动领取访客 SUB/SUBP，但仍被 WAF 拦截。"
                     "多为「访客凭证刚领就被标记异常」或「出口 IP 被 WAF 物理拉黑」。可尝试："
