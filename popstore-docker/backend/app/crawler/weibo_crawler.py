@@ -28,6 +28,50 @@ from app.core.config import settings
 
 logger = logging.getLogger("crawler.weibo")
 
+# IP / 作品名别名词典：把「标题 + 账号名」归一成标准作品名做标签。
+# 只放作品名（如「初音未来」），不再塞「快闪」「二次元」这类通用词和厂商名。
+# 新增 IP 时在这里加一行即可：标准名 -> 可能出现的别名/关键词（小写匹配）。
+IP_ALIASES = {
+    "初音未来": ["初音未来", "初音", "miku", "初音ミク", "racing miku"],
+    "吉伊卡哇": ["chiikawa", "吉伊卡哇", "吉伊", "乌萨奇", "哈奇", "乌萨奇&京韵脊兽"],
+    "宝可梦": ["宝可梦", "pokemon", "pokémon", "皮卡丘", "精灵宝可梦"],
+    "偶像梦幻祭": ["ensemblestars", "ensemble stars", "偶像梦幻祭", "あんスタ"],
+    "原神": ["原神", "genshin"],
+    "崩坏：星穹铁道": ["崩坏星穹铁道", "星穹铁道", "星铁", "honkai: star rail"],
+    "绝区零": ["绝区零", "zenless", "zzz"],
+    "鸣潮": ["鸣潮", "wuthering"],
+    "碧蓝航线": ["碧蓝航线", "azur lane"],
+    "第五人格": ["第五人格", "identity v"],
+    "胜利女神：妮姬": ["胜利女神", "nikke", "妮姬"],
+    "新世纪福音战士": ["新世纪福音战士", "福音战士", "evangelion", "eva"],
+    "明日方舟": ["明日方舟", "arknights"],
+    "蔚蓝档案": ["蔚蓝档案", "blue archive"],
+    "少女前线": ["少女前线", "girls' frontline"],
+    "咒术回战": ["咒术回战", "jujutsu"],
+    "孤独摇滚": ["孤独摇滚", "ぼっち・ざ・ろっく"],
+    "间谍过家家": ["间谍过家家", "spy×family", "spy x family"],
+    "鬼灭之刃": ["鬼灭之刃", "鬼灭"],
+    "名侦探柯南": ["名侦探柯南", "柯南"],
+    "三丽鸥": ["三丽鸥", "sanrio", "hellokitty", "hello kitty", "库洛米", "美乐蒂", "玉桂狗"],
+    "迪士尼": ["迪士尼", "disney", "疯狂动物城"],
+    "蜡笔小新": ["蜡笔小新"],
+    "哆啦A梦": ["哆啦a梦", "哆啦A梦", "机器猫"],
+}
+
+# 账号名里需要剥掉的噪声后缀（厂商/地区/认证词），仅在没匹配到 IP 时用作兜底标签
+_ACCOUNT_NOISE = re.compile(
+    r"(官方微博|官方旗舰店|官方|旗舰店|中国|分公司|丨.*|[（(].*?[)）]|【.*?】|\s+)")
+
+
+def derive_ip_tags(title: str, organizer: str, matched: List[str] = None) -> List[str]:
+    """推导标签：优先作品名（IP），最多 2 个；匹配不到才退化成清洗后的账号名。"""
+    text = f"{title or ''} {organizer or ''} {' '.join(matched or [])}".lower()
+    hits = [ip for ip, aliases in IP_ALIASES.items() if any(a.lower() in text for a in aliases)]
+    if hits:
+        return hits[:2]
+    name = _ACCOUNT_NOISE.sub("", organizer or "").strip()
+    return [name] if name else []
+
 CJK = r"[\u4e00-\u9fff]"
 
 # ─────────────────────────── 反爬/限流参数 ───────────────────────────
@@ -608,11 +652,8 @@ class WeiboCrawler(BaseCrawler):
         cover = img_urls[0] if img_urls else ""
 
         organizer = user.get("screen_name", "")
-        if account_mode:
-            # 账号监控模式：账号本身就是品牌，tag 用「快闪」+ 账号名，不再套「二次元」
-            tags = ["快闪"] + [k for k in matched if k not in ("联名",)]
-        else:
-            tags = ["快闪", "二次元"] + [k for k in matched if k not in ("联名",)]
+        # 标签只放作品名（IP），如「初音未来」；不再塞「快闪」「二次元」等通用词和厂商名
+        tags = derive_ip_tags(title, organizer, matched)
         meta = {
             "source_images": img_urls,       # 新浪图床直链，仅供参考，人工后续转存图床
             "raw_text": raw_text,

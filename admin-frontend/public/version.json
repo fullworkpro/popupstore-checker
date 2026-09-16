@@ -1,5 +1,5 @@
 {
   "source": "frontend",
-  "deploy_tag": "2026-09-16-weibo-cookie-priority-v1.4.9",
+  "deploy_tag": "2026-09-17-ip-tags-v1.4.10",
   "note": "前端部署指纹；应与后端 /api/v1/version 返回的 deploy_tag 一致。构建后由 nginx 在 /version.json 提供，用于确认 NAS 前端容器跑的是最新代码。"
 }
