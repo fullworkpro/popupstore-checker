@@ -44,13 +44,31 @@ def log(msg):
 
 
 # ── 后台交互 ────────────────────────────────────────────────
-def login(base: str, username: str, password: str, timeout=20) -> str:
-    import urllib.parse
+def login(base: str, username: str, password: str, timeout=25) -> str:
+    """登录后台换 JWT。
+
+    注意：后端 LoginRequest 是 pydantic 模型，只认 JSON body。
+    早期版本用 urlencode 且不设 Content-Type，FastAPI 解析不到 body 会一直挂着，
+    表现就是「定时任务卡在第一步」。这里统一改成 application/json。
+    """
+    import urllib.error
     import urllib.request
-    data = urllib.parse.urlencode({"username": username, "password": password}).encode()
-    req = urllib.request.Request(f"{base}/auth/login", data=data)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        d = json.loads(r.read().decode())
+
+    payload = json.dumps({"username": username, "password": password}).encode("utf-8")
+    req = urllib.request.Request(
+        f"{base}/auth/login", data=payload,
+        headers={"Content-Type": "application/json", "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            d = json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"登录失败：HTTP {e.code} {e.reason}（{e.read().decode()[:120]}）")
+    except TimeoutError:
+        raise RuntimeError(
+            f"登录超时（{timeout}s）：后台能读但写不进去，通常是 SQLite 写锁被占。\n"
+            "  请在 NAS 上执行 `docker restart popstore-backend` 后重跑；\n"
+            "  临时绕过：从浏览器 F12 取 access_token，用 --token <JWT> 跳过登录。"
+        )
     token = d.get("access_token")
     if not token:
         raise RuntimeError(f"登录失败：响应里没有 access_token（{str(d)[:120]}）")
@@ -288,6 +306,13 @@ def main():
     log(f"推送 {len(items)} 条到后台…")
     res = api_post_json(args.base_url, token, "/admin/stores/import-json?dry_run=false", payload)
     log("推送结果：" + json.dumps(summarize(res), ensure_ascii=False))
+    # 接口返回结构：{total, added, ..., items:[{index, level, message}]}
+    for row in (res.get("items") or [])[:8]:
+        idx = row.get("index")
+        title = str(items[idx].get("title") or "")[:38] if isinstance(idx, int) and idx < len(items) else ""
+        log("   · [{level}] {title} {msg}".format(
+            level=row.get("level"), title=title,
+            msg=str(row.get("message") or "")[:40]))
     for r in (res.get("results") or [])[:10]:
         log(f"  - [{r.get('level')}] {r.get('title')}")
     return 0
