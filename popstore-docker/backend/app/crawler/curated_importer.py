@@ -31,7 +31,7 @@
       "end_date": "2026-09-27",                // 可选
       "organizer": "bilibiliGoods",            // 可选
       "reservation": "required",               // 可选 required|advance|no
-      "tags": ["孤独摇滚", "漫画"],             // 可选，会自动补 "快闪"
+      "tags": ["孤独摇滚", "漫画"],             // 可选，只放作品名（IP）；留空时回退用 ip_name
       "source_url": "https://……",              // 强烈建议填，用于去重
       "cover_image": "",                       // 可选
       "confidence": 0.9,                       // 可选 0-1，<0.6 会标记待人工核实
@@ -337,19 +337,61 @@ def _build_cities(item: Dict):
     return out, first.get("city", ""), first.get("district", ""), first.get("address", "")
 
 
+def _coerce_tags(raw) -> List[str]:
+    """把任意写法的 tags 归一成 List[str]。
+
+    历史坑：早期直接 `list(item.get("tags") or [])`，当 tags 是 JSON 字符串
+    （如 '["吉伊卡哇"]'）时会被**逐字符拆开**，存成
+    ['[', '"', '吉', '伊', '卡', '哇', '"', ']'] —— 表现就是后台草稿里
+    「一个字一个标签」。这里统一做防御式解析，兼容：
+      · 列表/元组：["吉伊卡哇"]
+      · JSON 字符串：'["吉伊卡哇"]'
+      · 分隔符字符串："吉伊卡哇, 三丽鸥"
+      · 单个词："吉伊卡哇"
+    """
+    if raw is None:
+        return []
+    if isinstance(raw, (list, tuple, set)):
+        out = [str(t).strip() for t in raw]
+    elif isinstance(raw, str):
+        s = raw.strip()
+        if not s:
+            return []
+        parsed: Optional[object] = None
+        if s[0] in "[{":
+            try:
+                parsed = json.loads(s)
+            except Exception:
+                parsed = None
+        if isinstance(parsed, list):
+            out = [str(t).strip() for t in parsed]
+        elif isinstance(parsed, dict):
+            out = [str(t).strip() for t in parsed.keys()]
+        else:
+            out = [p.strip() for p in re.split(r"[,，、;；|/]+", s)]
+    else:
+        out = [str(raw).strip()]
+
+    junk = {"[", "]", "{", "}", '"', "'"}
+    seen, res = set(), []
+    for t in out:
+        if not t or t in junk or t in seen:
+            continue
+        seen.add(t)
+        res.append(t)
+    return res
+
+
 def normalize(item: Dict, batch: str = "") -> Dict:
     """把 WorkBuddy 的条目字段映射成 Store 入库字段（不做 LLM 抽取，只做格式化）。"""
     title = (item.get("title") or "").strip()[:200] or "无标题"
 
-    tags = list(item.get("tags") or [])
+    # tags 只放作品名（IP）。不再自动补「快闪」这类通用词，也不补厂商名（venue）。
+    tags = _coerce_tags(item.get("tags"))
     ip_name = (item.get("ip_name") or "").strip()
     venue = (item.get("venue") or "").strip()
-    if ip_name and ip_name not in tags:
+    if not tags and ip_name:
         tags.append(ip_name)
-    if venue and venue not in tags:
-        tags.append(venue)
-    if "快闪" not in tags:
-        tags.append("快闪")
 
     cities_list, city, district, address = _build_cities(item)
     cities_json = json.dumps(cities_list, ensure_ascii=False)
