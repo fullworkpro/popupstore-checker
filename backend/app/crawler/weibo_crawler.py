@@ -289,8 +289,23 @@ def extract_addresses(text: str) -> List[str]:
     return out[:5]
 
 
+# 非活动类噪音：正文含「快闪」但其实是发货/抽选/中奖/售后等运营通知，不应入草稿。
+# 新增排除词在此加一行即可（小写子串匹配，与 IP_ALIASES 同风格）。
+NOISE_PATTERNS = (
+    # 发货 / 售后
+    "发货", "补款", "退款", "退货", "换货", "物流", "运单", "快递", "到货", "出库", "签收",
+    # 抽选 / 中奖（购买资格抽选不是活动预告）
+    "抽选", "抽签", "中签", "中奖", "开奖", "获奖名单", "名单公布", "购买资格", "预约资格",
+    # 其它运营通知
+    "停售", "售罄公告", "延期发货", "补货通知",
+)
+
+
 def is_popup_post(text: str) -> bool:
-    return "快闪" in text
+    """是否【活动类】快闪帖：正文含「快闪」且不含发货/抽选/中奖等噪音词。"""
+    if "快闪" not in text:
+        return False
+    return not any(p in text for p in NOISE_PATTERNS)
 
 
 def is_anime_post(text: str, keywords: List[str]) -> Tuple[bool, List[str]]:
