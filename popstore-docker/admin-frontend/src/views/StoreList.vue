@@ -55,6 +55,20 @@
     <el-card>
       <el-table :data="list" stripe v-loading="loading">
         <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
+        <el-table-column label="ID / 小程序路径" width="150">
+          <template #default="{ row }">
+            <div style="display:flex;align-items:center;gap:4px">
+              <el-tooltip :content="row.id" placement="top">
+                <code style="font-size:11px;color:#606266">{{ shortId(row.id) }}</code>
+              </el-tooltip>
+              <el-button
+                size="small" text type="primary"
+                title="复制小程序路径 pages/detail/detail?id=xxx"
+                @click="copyText(mpPath(row.id), '小程序路径已复制')"
+              >复制路径</el-button>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="city" label="城市" width="80" />
         <el-table-column prop="store_type_label" label="类型" width="100">
           <template #default="{ row }">
@@ -75,8 +89,9 @@
         <el-table-column label="创建时间" width="160">
           <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="260" fixed="right">
+        <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
+            <el-button size="small" @click="openPreview(row)">预览</el-button>
             <el-button size="small" @click="$router.push(`/stores/${row.id}/edit`)">编辑</el-button>
             <el-button
               v-if="row.status === 'draft'"
@@ -115,6 +130,9 @@
         />
       </div>
     </el-card>
+
+    <!-- 小程序详情页预览 -->
+    <StorePreview v-model:visible="previewVisible" :store="previewStore" />
 
     <!-- 导入 JSON：WorkBuddy / content-hunter 产出的策展数据 -->
     <el-dialog v-model="importVisible" title="导入 JSON" width="900px" @closed="resetImport">
@@ -190,6 +208,17 @@
 import { ref, reactive, onMounted, nextTick, watch } from 'vue'
 import { getStores, deleteStore, reviewStore, getCities, importJsonStores } from '../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import StorePreview from '../components/StorePreview.vue'
+import { copyText, mpPath } from '../utils/clipboard'
+
+// ── 小程序预览 ──
+const previewVisible = ref(false)
+const previewStore = ref({})
+const openPreview = (row) => {
+  previewStore.value = row
+  previewVisible.value = true
+}
+const shortId = (id) => (id ? String(id).slice(0, 8) : '-')
 
 const loading = ref(false)
 const list = ref([])

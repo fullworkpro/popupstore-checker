@@ -24,6 +24,10 @@
           <el-icon><Monitor /></el-icon>
           <span>爬虫</span>
         </el-menu-item>
+        <el-menu-item index="/wechat">
+          <el-icon><Promotion /></el-icon>
+          <span>公众号推送</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 

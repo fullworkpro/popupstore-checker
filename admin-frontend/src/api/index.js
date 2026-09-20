@@ -68,5 +68,10 @@ export const runWeiboCrawler = () => api.post('/admin/crawler/weibo/run')
 export const getCrawlLogs = (params) => api.get('/admin/crawl-logs', { params })
 export const triggerCrawl = () => api.post('/admin/crawl/trigger')
 
+// 公众号推送（草稿箱）
+export const getWechatStatus = () => api.get('/admin/wechat/status')
+export const getWechatTask = () => api.get('/admin/wechat/task')
+export const pushWechatDraft = (data) => api.post('/admin/wechat/push', data)
+
 // 城市列表
 export const getCities = () => api.get('/admin/cities')

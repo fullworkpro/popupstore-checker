@@ -17,6 +17,7 @@ from app.api.mini import router as mini_router
 from app.api.proxy import router as proxy_router
 from app.api.qiniu import router as qiniu_router
 from app.api.version import router as version_router, build_version_payload
+from app.api.wechat import router as wechat_router
 from app.crawler.scheduler import init_scheduler, shutdown_scheduler
 import os
 
@@ -68,6 +69,7 @@ app.include_router(mini_router, prefix="/api/v1")
 app.include_router(proxy_router, prefix="/api/v1")
 app.include_router(qiniu_router, prefix="/api/v1")
 app.include_router(version_router, prefix="/api/v1")
+app.include_router(wechat_router, prefix="/api/v1")
 
 
 @app.get("/version.json", response_model=dict)

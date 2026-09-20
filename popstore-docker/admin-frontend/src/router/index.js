@@ -36,6 +36,11 @@ const routes = [
         name: 'Crawler',
         component: () => import('../views/Crawler.vue'),
       },
+      {
+        path: 'wechat',
+        name: 'WechatPush',
+        component: () => import('../views/WechatPush.vue'),
+      },
     ],
   },
 ]
