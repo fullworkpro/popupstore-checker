@@ -19,6 +19,7 @@ import io
 import json
 import os
 import sys
+import time
 from datetime import datetime
 
 import requests
@@ -27,29 +28,45 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from clean_noise_drafts import _req, login, DATA_DIR  # noqa: E402
 from gen_weekly_wechat import (  # noqa: E402
     OUT_DIR, PREVIEW_TPL, _json_list, fmt_range, parse_dt,
+    ACCENT, ACCENT_DEEP, ACCENT_SOFT, ACCENT_LINE, MUTED, MP_NAME, MP_SLOGAN,
 )
 
-ACCENT = "#ff5c8a"
-MUTED = "#8a8a8a"
 ASSETS = os.path.join(DATA_DIR, "assets")
 QRCODE = os.path.join(ASSETS, "xcx-qrcode.png")
 CRED = os.path.join(DATA_DIR, ".wechat_mp")
-MP_NAME = os.environ.get("MP_NAME", "wing的附近溜达本")
-MP_SLOGAN = os.environ.get("MP_SLOGAN", "附近的联名快闪 / 特展 / 联名餐厅，随手一查")
 UPLOAD_LIMIT_MB = 10
 
 
-def read_credentials():
+CRED_KEYS = ("WECHAT_APPID", "WECHAT_APPSECRET", "WXAPP_APPID", "WXAPP_APPSECRET")
+
+
+def read_credential_dict():
+    """读取凭据文件的全部键值（公众号 + 小程序）。文件本身不入库。"""
     if not os.path.exists(CRED):
-        return None
+        return {}
     d = {}
     with open(CRED, encoding="utf-8") as f:
         for line in f:
-            if "=" in line and not line.strip().startswith("#"):
+            line = line.strip()
+            if "=" in line and not line.startswith("#"):
                 k, v = line.split("=", 1)
                 d[k.strip()] = v.strip()
+    return d
+
+
+def read_credentials():
+    """公众号凭据，返回 (appid, secret)"""
+    d = read_credential_dict()
     if d.get("WECHAT_APPID") and d.get("WECHAT_APPSECRET"):
         return d["WECHAT_APPID"], d["WECHAT_APPSECRET"]
+    return None
+
+
+def read_miniapp_credentials():
+    """小程序凭据，返回 (appid, secret)；未配置返回 None"""
+    d = read_credential_dict()
+    if d.get("WXAPP_APPID") and d.get("WXAPP_APPSECRET"):
+        return d["WXAPP_APPID"], d["WXAPP_APPSECRET"]
     return None
 
 
@@ -69,6 +86,95 @@ def get_access_token():
                 "40013": "AppID 无效"}.get(code, "")
         raise SystemExit(f"获取 access_token 失败: {r} {hint}")
     return r["access_token"]
+
+
+def get_miniapp_token():
+    """小程序自己的 access_token（与公众号不是同一个）"""
+    cred = read_miniapp_credentials()
+    if not cred:
+        return None
+    r = requests.get(
+        "https://api.weixin.qq.com/cgi-bin/token",
+        params={"grant_type": "client_credential", "appid": cred[0], "secret": cred[1]},
+        timeout=15,
+    ).json()
+    if "access_token" not in r:
+        print(f"[提示] 小程序 token 获取失败 {r.get('errcode')} {r.get('errmsg')}"
+              f"（40164 = 需把出口 IP 加进小程序白名单）")
+        return None
+    return r["access_token"]
+
+
+def store_wxacode(store_id):
+    """生成「店铺专属小程序码」：scene=id=<store_id>，长按直达该店详情页
+
+    与通用码的区别：通用码只进首页，专属码直接打开这一家的详情页。
+    失败返回 None（未配小程序凭据 / 接口不可用），调用方降级用静态通用码。
+    返回 (bytes, ext)，ext 为 png/jpg。
+    """
+    tk = get_miniapp_token()
+    if not tk or not store_id:
+        return None
+    # scene 上限 32 字符，36 位 UUID 塞不下 → 只带前 12 位，
+    # 后端 mini.py 的 /stores/{id} 已支持前缀匹配补齐。
+    scene_id = str(store_id)[:12]
+    try:
+        r = requests.post(
+            f"https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token={tk}",
+            json={"scene": f"id={scene_id}", "path": "pages/detail/detail",
+                  "width": 430, "is_hyaline": False},
+            timeout=30,
+        )
+    except Exception as e:
+        print(f"[提示] 小程序码生成异常 {e} → 降级用通用码")
+        return None
+    if not r.headers.get("content-type", "").startswith("image"):
+        try:
+            print(f"[提示] 小程序码生成失败 {r.json().get('errcode')} → 降级用通用码")
+        except Exception:
+            print("[提示] 小程序码生成失败 → 降级用通用码")
+        return None
+    data = r.content
+    ext = "jpg" if data[:2] == b"\xff\xd8" else "png"
+    return data, ext
+
+
+def qrcode_bytes_for(store_id=None):
+    """优先店铺专属码，失败降级静态通用码。返回 (bytes, ext) 或 None"""
+    if store_id:
+        got = store_wxacode(store_id)
+        if got:
+            return got
+    if os.path.exists(QRCODE):
+        with open(QRCODE, "rb") as f:
+            return f.read(), os.path.splitext(QRCODE)[1].lstrip(".") or "png"
+    return None
+
+
+def generate_urllink(store_id, days=365):
+    """生成跳小程序详情页的 URL Link，用于推文「阅读原文」
+
+    失败时静默返回空串，不影响草稿创建。
+    """
+    tk = get_miniapp_token()
+    if not tk:
+        return ""
+    body = {
+        "path": "pages/detail/detail",
+        "query": f"id={store_id}",
+        "env_version": "release",
+        "expire_type": 0,
+        "expire_time": int(time.time()) + days * 86400,
+        "is_expire": False,
+    }
+    r = requests.post(
+        f"https://api.weixin.qq.com/wxa/generate_urllink?access_token={tk}",
+        json=body, timeout=30,
+    ).json()
+    if "url_link" not in r:
+        print(f"[提示] URL Link 生成失败 {r.get('errcode')} {r.get('errmsg')} → 阅读原文留空")
+        return ""
+    return r["url_link"]
 
 
 def uploadimg(token: str, data: bytes, filename: str) -> str:
@@ -142,7 +248,7 @@ def info_section(store, qrcode_src=None):
         f'<p style="margin:6px 0 0;font-size:13px;color:{MUTED};">原文：{html.escape(src)}</p>' if src else ""
     )
     return (
-        f'<section style="border-left:4px solid {ACCENT};background:#fafafa;padding:14px 16px;'
+        f'<section style="border-left:4px solid {ACCENT};background:{ACCENT_SOFT};padding:14px 16px;'
         f'margin:0 0 18px;border-radius:6px;">'
         f'<h2 style="margin:0 0 4px;font-size:18px;line-height:1.5;color:#222;">'
         f'{html.escape((store.get("title") or "").strip())}</h2>'
@@ -175,8 +281,8 @@ def cta_section(qrcode_src):
         else ""
     )
     return (
-        f'<section style="margin:26px 0 0;padding:20px 16px 22px;background:#fff5f8;'
-        f'border-radius:10px;text-align:center;">'
+        f'<section style="margin:26px 0 0;padding:20px 16px 22px;background:{ACCENT_SOFT};'
+        f'border:1px solid {ACCENT_LINE};border-radius:10px;text-align:center;">'
         f'<p style="margin:0 0 12px;font-size:15px;font-weight:bold;color:{ACCENT};">'
         f"随时随地查快闪 · 就在「{MP_NAME}」小程序</p>"
         f"{qr}"
@@ -248,15 +354,19 @@ def main():
     image_urls = collect_images(store, wx_token)
 
     qrcode_src = None
-    if os.path.exists(QRCODE):
+    qr_local = None  # (bytes, ext) 供本地预览内嵌
+    qr_pack = qrcode_bytes_for(store.get("id"))
+    if qr_pack:
+        qr_local = qr_pack
         if wx_token:
-            with open(QRCODE, "rb") as f:
-                qrcode_src = uploadimg(wx_token, f.read(), "xcx-qrcode.png")
-                print(f"  [传图] 小程序码 -> {qrcode_src[:72]}…")
+            ext = qr_pack[1]
+            short_id = str(store.get("id") or "")[:8] or "home"
+            qrcode_src = uploadimg(wx_token, qr_pack[0], f"xcx-qrcode-{short_id}.{ext}")
+            print(f"  [传图] 小程序码 -> {qrcode_src[:72]}…")
         else:
-            qrcode_src = "data:image/png;base64,__LOCAL_QRCODE__"  # 本地预览占位
+            qrcode_src = f"data:image/{qr_pack[1]};base64,__LOCAL_QRCODE__"
     else:
-        print(f"[警告] 找不到小程序码 {QRCODE}，收尾区将没有二维码")
+        print(f"[警告] 小程序码生成失败且无静态码 {QRCODE}，收尾区将没有二维码")
 
     html_body = render_single(store, image_urls, qrcode_src)
     md_body = render_md(store, image_urls, qrcode_src)
@@ -270,14 +380,16 @@ def main():
     with open(md_path, "w", encoding="utf-8") as f:
         f.write(md_body)
 
-    # 本地预览：把占位换成本地文件 base64
+    # 本地预览：把占位换成 base64（店铺专属码或降级用的静态码）
     preview_body = html_body
-    if os.path.exists(QRCODE):
+    if qr_local:
         import base64
 
-        with open(QRCODE, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode()
-        preview_body = preview_body.replace("data:image/png;base64,__LOCAL_QRCODE__", f"data:image/png;base64,{b64}")
+        b64 = base64.b64encode(qr_local[0]).decode()
+        preview_body = preview_body.replace(
+            f"data:image/{qr_local[1]};base64,__LOCAL_QRCODE__",
+            f"data:image/{qr_local[1]};base64,{b64}",
+        )
     preview_path = os.path.join(OUT_DIR, f"wechat-single-{sid}-preview.html")
     with open(preview_path, "w", encoding="utf-8") as f:
         f.write(PREVIEW_TPL.format(title=html.escape(store.get("title") or "单篇预览"), body=preview_body))

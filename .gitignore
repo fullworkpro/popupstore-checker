@@ -15,14 +15,15 @@ data/uploads/*
 *.zip
 popstore-docker.zip
 
-# 本地凭据（后台密码 / 微博 Cookie），需各自在本机创建，绝不入库
-backend/data/.admin_password
-backend/data/.weibo_cookie
-backend/data/.wechat_mp
-backend/data/.wechat_pushed.json
-backend/data/.wechat_task.json
-backend/data/.mp_ip
-backend/data/.last_token
+# 本地凭据（后台密码 / 微博 Cookie / 公众号与小程序的 AppSecret），需各自在本机创建，绝不入库
+# 用 **/ 通配，保证 popstore-docker 部署副本下的同名文件同样不入库
+**/data/.admin_password
+**/data/.weibo_cookie
+**/data/.wechat_mp
+**/data/.wechat_pushed.json
+**/data/.wechat_task.json
+**/data/.mp_ip
+**/data/.last_token
 # 本机抓取产物（crawl_local_push.py 的输出）
 backend/data/outbox/*
 

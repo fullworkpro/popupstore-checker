@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from clean_noise_drafts import _req, login, DATA_DIR  # noqa: E402
 from gen_single_wechat import (  # noqa: E402
     MP_NAME, QRCODE, get_access_token, render_md, render_single, uploadimg,
+    qrcode_bytes_for,
 )
 from gen_weekly_wechat import parse_dt, pick_city_group  # noqa: E402
 from gen_weekly_wechat import render_html as render_weekly_html  # noqa: E402
@@ -136,16 +137,17 @@ def build_article(store, wx: str, date_tag: str, light: bool, url_link: str = ""
         print(f"  [传图] {i + 1}/{len(urls)} {fn}")
 
     qrcode_src = None
-    if os.path.exists(QRCODE):
+    qr_pack = qrcode_bytes_for(store.get("id"))  # 店铺专属码优先，失败降级通用码
+    if qr_pack:
+        qr_data, qr_ext = qr_pack
         if not upload:
             qrcode_src = None
         else:
-            with open(QRCODE, "rb") as f:
-                qr_data = f.read()
-            fn = f"{date_tag}_小程序码.png"
+            short = str(store.get("id") or "")[:8]
+            fn = f"{date_tag}_小程序码_{short}.{qr_ext}" if short else f"{date_tag}_小程序码.{qr_ext}"
             archive_local(date_tag, fn, qr_data)
             qrcode_src = upload_permanent_image(wx, qr_data, fn) if not light else uploadimg(wx, qr_data, fn)
-            print("  [传图] 小程序码")
+            print(f"  [传图] 小程序码 {fn}")
 
     content = render_single(store, wx_urls, qrcode_src)
     md = render_md(store, wx_urls, qrcode_src)

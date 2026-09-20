@@ -81,6 +81,19 @@ def get_store(store_id: str, db: Session = Depends(get_db)):
         Store.id == store_id,
         Store.status == StoreStatus.PUBLISHED.value,
     ).first()
+
+    if not store and 8 <= len(store_id) < 36:
+        # 小程序码的 scene 上限 32 字符，塞不下 36 位 UUID，
+        # 因此店铺专属码只带前 8~12 位，这里按前缀补齐命中。
+        store = (
+            db.query(Store)
+            .filter(
+                Store.id.startswith(store_id),
+                Store.status == StoreStatus.PUBLISHED.value,
+            )
+            .first()
+        )
+
     if not store:
         raise HTTPException(status_code=404, detail="快闪店不存在或已下架")
 

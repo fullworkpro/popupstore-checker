@@ -53,10 +53,22 @@ Page({
   },
 
   onLoad(options) {
-    if (options.id) {
-      const isFav = getFavIds().includes(options.id)
+    // 普通跳转：pages/detail/detail?id=xxx
+    // 扫码进入：小程序码 scene=id%3Dxxx（需 decodeURIComponent）
+    let id = options.id || ''
+    if (!id && options.scene) {
+      try {
+        const scene = decodeURIComponent(options.scene || '')
+        const m = /id=([^&]+)/.exec(scene)
+        if (m) id = m[1]
+      } catch (e) {
+        id = ''
+      }
+    }
+    if (id) {
+      const isFav = getFavIds().includes(id)
       this.setData({ isFav })
-      this.fetchDetail(options.id)
+      this.fetchDetail(id)
     }
   },
 

@@ -112,7 +112,9 @@ class PushRequest(BaseModel):
 
 # ── 凭据 ────────────────────────────────────────────────────
 def _read_credentials() -> dict:
-    info = {"configured": False, "appid": ""}
+    """只读地汇报凭据是否已配置——任何情况下都不回传 AppSecret"""
+    info = {"configured": False, "appid": "",
+            "miniapp_configured": False, "miniapp_appid": ""}
     if not CRED_FILE.exists():
         return info
     try:
@@ -121,11 +123,15 @@ def _read_credentials() -> dict:
             if line.startswith("#") or "=" not in line:
                 continue
             k, v = line.split("=", 1)
-            if k.strip().upper() == "WECHAT_APPID":
+            k = k.strip().upper()
+            if k == "WECHAT_APPID":
                 info["appid"] = v.strip()
+            elif k == "WXAPP_APPID":
+                info["miniapp_appid"] = v.strip()
     except Exception:
         pass
     info["configured"] = bool(info["appid"]) and not info["appid"].startswith("wx_your")
+    info["miniapp_configured"] = bool(info["miniapp_appid"])
     return info
 
 

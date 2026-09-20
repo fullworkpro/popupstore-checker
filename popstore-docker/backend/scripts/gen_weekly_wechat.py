@@ -26,16 +26,23 @@ from clean_noise_drafts import _req, login, DATA_DIR  # noqa: E402
 
 OUT_DIR = os.path.join(DATA_DIR, "outbox")
 
-ACCENT = "#ff5c8a"
-MUTED = "#8a8a8a"
+# 配色与小程序保持一致（小程序主色 #6C5CE7）
+ACCENT = "#6C5CE7"        # 主紫：标题、标签、强调
+ACCENT_DEEP = "#5b4bd6"   # 深紫：分组小标题
+ACCENT_SOFT = "#f4f0ff"   # 浅紫底：信息卡 / 引流区
+ACCENT_LINE = "#d9c8ff"   # 浅紫描边
+MUTED = "#8a8a8a"         # 次要文字
+
+MP_NAME = os.environ.get("MP_NAME", "wing的附近溜达本")
+MP_SLOGAN = os.environ.get("MP_SLOGAN", "附近的联名快闪 / 特展 / 联名餐厅，随手一查")
 
 PREVIEW_TPL = """<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <title>{title}</title>
 <style>
-  body{{margin:0;padding:24px;background:#f2f3f5;font-family:-apple-system,"PingFang SC",sans-serif;}}
+  body{{margin:0;padding:24px;background:#f3f1fa;font-family:-apple-system,"PingFang SC",sans-serif;}}
   .phone{{max-width:414px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 4px 24px rgba(0,0,0,.08);overflow:hidden;}}
-  .bar{{background:#ededed;padding:10px 14px;font-size:13px;color:#666;}}
+  .bar{{background:#ece7fb;padding:10px 14px;font-size:13px;color:#5b4bd6;}}
   .inner{{padding:16px 14px 24px;}}
   img{{max-width:100%;height:auto;}}
 </style></head><body>
@@ -139,7 +146,7 @@ def card_html(it):
         else ""
     )
     return (
-        f'<section style="border-left:4px solid {ACCENT};background:#fafafa;'
+        f'<section style="border-left:4px solid {ACCENT};background:{ACCENT_SOFT};'
         f'padding:12px 14px;margin:14px 0;border-radius:6px;">'
         f'<p style="margin:0;font-size:16px;font-weight:bold;line-height:1.5;color:#222;">{title}</p>'
         f'{sub_html}'
@@ -161,7 +168,7 @@ def render_html(items, title, lead):
         )
     for city, group in pick_city_group(items):
         body.append(
-            f'<h2 style="font-size:17px;font-weight:bold;color:#222;margin:22px 0 4px;'
+            f'<h2 style="font-size:17px;font-weight:bold;color:{ACCENT_DEEP};margin:22px 0 4px;'
             f'padding-left:10px;border-left:4px solid {ACCENT};">'
             f"{html.escape(city)} · {len(group)} 场</h2>"
         )
@@ -171,7 +178,7 @@ def render_html(items, title, lead):
         '<section style="margin-top:26px;padding-top:14px;border-top:1px dashed #ddd;">'
         f'<p style="font-size:13px;color:{MUTED};line-height:1.8;margin:0;">'
         "以上信息整理自公开渠道，具体以主办方现场公告为准。<br/>"
-        "想随时查附近正在进行的快闪，可以打开「快闪地图」小程序看看。</p></section>"
+        f"想随时查附近正在进行的快闪，可以打开「{MP_NAME}」小程序看看。</p></section>"
     )
     body.append(foot)
     inner = "\n".join(body)

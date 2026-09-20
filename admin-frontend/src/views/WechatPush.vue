@@ -50,7 +50,17 @@
       </div>
       <div style="margin-top:8px;font-size:12px;color:#909399;line-height:1.7">
         图片默认转存为微信永久素材，文件名形如 <code>260921_标题_1.jpg</code>，素材库可按日期前缀检索；
-        勾选「轻量图」则不进素材库（省配额，但不可管理）。草稿只进草稿箱，群发永远由你在公众号后台点。
+        勾选「轻量图」则不进素材库（省配额，但不可管理）。草稿只进草稿箱，群发永远由你在公众号后台点。<br />
+        <template v-if="miniOk">
+          已配置小程序凭据 → 每篇推文收尾会自动生成<b>该店的专属小程序码</b>，长按直达这家店的详情页
+          （通用码只进首页）。
+        </template>
+        <template v-else>
+          未配置小程序凭据 → 收尾用静态通用码（只进首页）。在
+          <code>backend/data/.wechat_mp</code> 补 <code>WXAPP_APPID</code> / <code>WXAPP_APPSECRET</code> 即可升级为专属码。
+        </template>
+        <br />「阅读原文」：个人主体小程序无 URL Link 权限（85407），公众号正文也无法插入小程序卡片，
+        这里只能填普通网页链接。
       </div>
     </el-card>
 
@@ -138,6 +148,7 @@ const running = computed(() => task.value.status === 'running')
 const pushed = computed(() => status.value.pushed || {})
 const pushedCount = computed(() => Object.keys(pushed.value).length)
 const credOk = computed(() => !!status.value.credential?.configured)
+const miniOk = computed(() => !!status.value.credential?.miniapp_configured)
 const scriptExists = computed(() => status.value.script_exists !== false)
 
 const taskLabel = computed(() => ({
