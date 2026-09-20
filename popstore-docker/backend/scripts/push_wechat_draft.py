@@ -222,9 +222,20 @@ def main():
     ap.add_argument("--light", action="store_true", help="图片用 uploadimg，不占素材库配额")
     ap.add_argument("--force", action="store_true", help="忽略已推送记录")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--input-json", default=None,
+                    help="直接传入店铺数据 JSON（列表或 {items:[...]}），跳过后台登录取数")
     args = ap.parse_args()
 
-    token = login()
+    # 数据来源：优先 --input-json（容器内免登录，也不依赖后台 API 可达）
+    stores_override = None
+    if args.input_json:
+        with open(args.input_json, encoding="utf-8") as f:
+            data = json.load(f)
+        stores_override = data if isinstance(data, list) else (data.get("items") or [])
+        print(f"[输入] 直接喂入 {len(stores_override)} 条店铺数据（跳过后台登录）")
+        token = None
+    else:
+        token = login()
     wx = get_access_token()
     print("[公众号] access_token OK")
     date_tag = datetime.now().strftime("%y%m%d")
@@ -234,17 +245,22 @@ def main():
     ids_for_record = []
 
     if args.weekly:
-        stores = fetch_published(token)
-        now = datetime.now()
-        picked = []
-        for s in stores:
-            if args.city and (s.get("city") or "") != args.city:
-                continue
-            c = parse_dt(s.get("created_at"))
-            if c and c >= now - timedelta(days=args.days):
-                picked.append(s)
+        if stores_override is not None:
+            picked = [s for s in stores_override
+                      if not args.city or (s.get("city") or "") == args.city]
+        else:
+            stores = fetch_published(token)
+            now0 = datetime.now()
+            picked = []
+            for s in stores:
+                if args.city and (s.get("city") or "") != args.city:
+                    continue
+                c = parse_dt(s.get("created_at"))
+                if c and c >= now0 - timedelta(days=args.days):
+                    picked.append(s)
         if not picked:
             raise SystemExit("周报没有命中的店铺")
+        now = datetime.now()
         picked.sort(key=lambda x: parse_dt(x.get("start_date")) or datetime.max)
         cities = [c for c, _ in pick_city_group(picked)]
         lead = f"本期共 {len(picked)} 场，覆盖 {'、'.join(cities[:6])}{'等' if len(cities) > 6 else ''}城市。"
@@ -275,7 +291,9 @@ def main():
         })
         mds.append(render_weekly_md(picked, title, lead))
     else:
-        if args.ids:
+        if stores_override is not None:
+            stores = stores_override
+        elif args.ids:
             wanted = [x.strip() for x in args.ids.split(",") if x.strip()]
             id_set = set(wanted)
             stores = [s for s in fetch_published(token) if s.get("id") in id_set]

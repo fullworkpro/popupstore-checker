@@ -19,15 +19,20 @@ import os
 import subprocess
 import sys
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import desc
+from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_admin
+from app.core.database import get_db
 from app.models.admin import Admin
+from app.models.store import Store, StoreStatus
+from app.schemas.schemas import StoreResponse
 
 router = APIRouter(prefix="/admin/wechat", tags=["公众号推送"])
 
@@ -164,7 +169,8 @@ def task(_: Admin = Depends(get_current_admin)):
 
 
 @router.post("/push")
-def push(payload: PushRequest, _: Admin = Depends(get_current_admin)):
+def push(payload: PushRequest, db: Session = Depends(get_db),
+         _: Admin = Depends(get_current_admin)):
     global _proc, _state
 
     cred = _read_credentials()
@@ -177,18 +183,52 @@ def push(payload: PushRequest, _: Admin = Depends(get_current_admin)):
         if _is_running():
             raise HTTPException(status_code=409, detail="上一次推送还在进行中，请等它跑完")
 
-        args: List[str] = []
+        # ── 直接从数据库取数，写成 JSON 喂给脚本 ──
+        # 这样脚本不必登录后台 API，也就不需要 data/.admin_password，
+        # 也不依赖「容器内能否访问到自己的服务地址」。
         if payload.mode == "weekly":
-            args += ["--weekly", "--days", str(payload.days)]
-            if payload.city:
-                args += ["--city", payload.city]
+            since = datetime.now() - timedelta(days=payload.days)
+            rows = (
+                db.query(Store)
+                .filter(Store.status == StoreStatus.PUBLISHED.value)
+                .filter(Store.created_at >= since)
+                .order_by(desc(Store.created_at))
+                .all()
+            )
         else:
             if not payload.ids:
                 raise HTTPException(status_code=400, detail="请至少勾选一篇要推送的快闪店")
             if len(payload.ids) > MAX_ARTICLES:
                 raise HTTPException(status_code=400,
                                     detail=f"一次最多 {MAX_ARTICLES} 篇，当前勾选 {len(payload.ids)} 篇")
-            args += ["--ids", ",".join(payload.ids)]
+            rows = (
+                db.query(Store)
+                .filter(Store.id.in_(payload.ids),
+                        Store.status == StoreStatus.PUBLISHED.value)
+                .all()
+            )
+            found = {r.id for r in rows}
+            missing = [i for i in payload.ids if i not in found]
+            if missing:
+                print(f"[警告] 这些 id 不是已发布状态：{missing}")
+
+        if not rows:
+            raise HTTPException(status_code=400, detail="没有符合条件的已发布快闪店")
+
+        stores = [StoreResponse.model_validate(r).model_dump(mode="json") for r in rows]
+
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        input_path = LOG_DIR / "wechat-push-input.json"
+        with open(input_path, "w", encoding="utf-8") as f:
+            json.dump(stores, f, ensure_ascii=False)
+
+        args: List[str] = ["--input-json", str(input_path)]
+        if payload.mode == "weekly":
+            args += ["--weekly", "--days", str(payload.days)]
+            if payload.city:
+                args += ["--city", payload.city]
+        else:
+            pass  # 单篇：数据已由 --input-json 喂入，无需再传 ids
         if payload.title:
             args += ["--title", payload.title]
         if payload.url_link:
