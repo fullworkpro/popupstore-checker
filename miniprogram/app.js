@@ -6,7 +6,7 @@ const MANUAL_ENV = 'release'
 // 小程序端版本标记：miniprogram/ 不在 popstore-docker/ 内，不随 docker 部署，
 // 必须另用微信开发者工具上传发布。改了小程序却「没生效」时，先在开发者工具
 // 控制台确认这里打印的版本是否为最新。
-const MP_VERSION = '2026-09-02-mini-type-filter-loadinggate-v1.4.3'
+const MP_VERSION = '2026-09-21-store-wxacode-scene-v1.4.14'
 
 App({
   onLaunch() {
