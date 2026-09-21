@@ -80,22 +80,4 @@
     <button open-type="share" class="share-inner">分享给好友</button>
   </view>
 
-  <!-- 全屏看图：点击题图放大，双指缩放，默认比例点击关闭 -->
-  <view class="img-viewer" wx:if="{{viewerShow}}" bindtap="closeViewer">
-    <movable-area class="viewer-area" scale-area="true">
-      <movable-view
-        class="viewer-box"
-        direction="all"
-        scale
-        scale-min="1"
-        scale-max="4"
-        bindscale="onViewerScale"
-      >
-        <view class="viewer-inner">
-          <image src="{{viewerSrc}}" mode="widthFix" class="viewer-img" bindtap="onViewerImgTap" />
-        </view>
-      </movable-view>
-    </movable-area>
-    <view class="viewer-tip">轻点关闭 · 双指缩放</view>
-  </view>
 </view>

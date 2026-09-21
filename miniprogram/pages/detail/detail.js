@@ -46,10 +46,6 @@ Page({
     cities: [],
     tagList: [],
     isFav: false,
-    // 全屏看图
-    viewerShow: false,
-    viewerSrc: '',
-    viewerScale: 1,
   },
 
   onLoad(options) {
@@ -114,29 +110,16 @@ Page({
     this.setData({ isFav: ids.includes(id) })
   },
 
-  // 打开全屏看图
+  // 打开全屏看图：走微信原生预览，长图未放大即完整可见，放大后可上下/左右拖动看全
   openViewer(e) {
     const src = e.currentTarget.dataset.src
     if (!src) return
-    this.setData({ viewerShow: true, viewerSrc: src, viewerScale: 1 })
-  },
-
-  // 记录当前缩放比例（双指缩放时触发）
-  onViewerScale(e) {
-    this.setData({ viewerScale: e.detail.scale })
-  },
-
-  // 题图点击：默认比例下关闭全屏；已放大时不关闭（避免误触）
-  onViewerImgTap(e) {
-    if (this.data.viewerScale <= 1.05) {
-      this.closeViewer()
-    } else if (e && e.stopPropagation) {
-      e.stopPropagation()
+    let urls = (this.data.images || []).slice()
+    if (!urls.length && this.data.store && this.data.store.cover_image) {
+      urls = [this.data.store.cover_image]
     }
-  },
-
-  closeViewer() {
-    this.setData({ viewerShow: false, viewerSrc: '', viewerScale: 1 })
+    if (urls.indexOf(src) < 0) urls.unshift(src)
+    wx.previewImage({ current: src, urls })
   },
 
   onShareAppMessage() {
