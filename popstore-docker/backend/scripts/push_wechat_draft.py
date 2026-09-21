@@ -193,6 +193,10 @@ def build_article(store, wx: str, date_tag: str, light: bool, url_link: str = ""
 def create_draft(wx: str, articles: list[dict]) -> str:
     if len(articles) > MAX_ARTICLES:
         raise SystemExit(f"一次最多 {MAX_ARTICLES} 篇，当前 {len(articles)} 篇")
+    # 微信 draft/add 不接受自定义 <mp-miniprogram>（实测 45166 invalid content），提前提示
+    if any("mp-miniprogram" in (a.get("content") or "") for a in articles):
+        print("[警告] 正文含 <mp-miniprogram> 标签，微信大概率返回 45166 invalid content；"
+              "如需保留纯文本引流，请设 MP_MINI_CARD=0")
     r = requests.post(
         f"https://api.weixin.qq.com/cgi-bin/draft/add?access_token={wx}",
         data=json.dumps({"articles": articles}, ensure_ascii=False).encode("utf-8"),

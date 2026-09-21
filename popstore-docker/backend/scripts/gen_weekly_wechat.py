@@ -64,7 +64,9 @@ MP_HOME_LINK = (
 
 # 小程序卡片（正文内原生 <mp-miniprogram>）：可点直达任意页面，不依赖 Short Link 接口
 WXAPP_APPID = os.environ.get("WXAPP_APPID") or _CRED.get("WXAPP_APPID", "")
-MP_MINI_CARD = (os.environ.get("MP_MINI_CARD") or _CRED.get("MP_MINI_CARD", "1")) not in (
+# 默认关闭：v1.4.18 实测微信 draft/add 会拒绝自定义 <mp-miniprogram>（45166 invalid content），
+# 开启前请先用 scripts/probe_minicard.py 验证当前号是否接受该标签。
+MP_MINI_CARD = (os.environ.get("MP_MINI_CARD") or _CRED.get("MP_MINI_CARD", "0")) not in (
     "0", "false", "False", "no",
 )
 MINI_HOME_PATH = os.environ.get("MINI_HOME_PATH", "pages/index/index")
