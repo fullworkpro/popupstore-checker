@@ -33,11 +33,58 @@ ACCENT_SOFT = "#f4f0ff"   # 浅紫底：信息卡 / 引流区
 ACCENT_LINE = "#d9c8ff"   # 浅紫描边
 MUTED = "#8a8a8a"         # 次要文字
 
+CRED = os.path.join(DATA_DIR, ".wechat_mp")
+
+
+def _read_cred() -> dict:
+    d = {}
+    if os.path.exists(CRED):
+        with open(CRED, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if "=" in line and not line.startswith("#"):
+                    k, v = line.split("=", 1)
+                    d[k.strip()] = v.strip()
+    return d
+
+
+_CRED = _read_cred()
+
 MP_NAME = os.environ.get("MP_NAME", "wing的附近溜达本")
 MP_SLOGAN = os.environ.get("MP_SLOGAN", "附近的联名快闪 / 特展 / 联名餐厅，随手一查")
-# 小程序首页链接：手机上打开小程序 → 右上角「…」→ 复制页面链接，形如 #小程序://名称/短码
-# 公众号编辑器会把这串文字自动识别为可点的小程序链接；留空则不加文首引流条。
-MP_HOME_LINK = os.environ.get("MP_HOME_LINK", "#小程序://wing的附近溜达本/vtREo1iRntOg2Kt")
+# 小程序首页链接：手机上打开小程序首页 → 右上角「…」→ 复制页面链接，形如 #小程序://名称/短码
+# 优先级：环境变量 > 凭据文件 .wechat_mp 的 MP_HOME_LINK > 默认值
+# 注意：Short Link 服务端接口（wxa/genwxashortlink）个人主体无权限（实测 43104），
+#       无法程序化生成，只能这样手工取一次；留空则不加文首引流条。
+MP_HOME_LINK = (
+    os.environ.get("MP_HOME_LINK")
+    or _CRED.get("MP_HOME_LINK")
+    or "#小程序://wing的附近溜达本/vtREo1iRntOg2Kt"
+)
+
+# 小程序卡片（正文内原生 <mp-miniprogram>）：可点直达任意页面，不依赖 Short Link 接口
+WXAPP_APPID = os.environ.get("WXAPP_APPID") or _CRED.get("WXAPP_APPID", "")
+MP_MINI_CARD = (os.environ.get("MP_MINI_CARD") or _CRED.get("MP_MINI_CARD", "1")) not in (
+    "0", "false", "False", "no",
+)
+MINI_HOME_PATH = os.environ.get("MINI_HOME_PATH", "pages/index/index")
+
+
+def mini_card_html(path: str, title: str):
+    """正文内小程序卡片：点击直达 path 指定页面（首页 / 店铺详情页均可）。
+
+    个人主体调不了 Short Link API，改用公众号正文原生 <mp-miniprogram> 标签；
+    若微信端未渲染成卡片，可在 .wechat_mp 里设 MP_MINI_CARD=0 关闭。
+    """
+    if not MP_MINI_CARD or not WXAPP_APPID or not path:
+        return ""
+    return (
+        f'<mp-miniprogram data-miniprogram-appid="{html.escape(WXAPP_APPID)}" '
+        f'data-miniprogram-path="{html.escape(path)}" '
+        f'data-miniprogram-nickname="{html.escape(MP_NAME)}" '
+        f'data-miniprogram-title="{html.escape(title)}" '
+        f'data-miniprogram-type="card" data-miniprogram-servicetype="0"></mp-miniprogram>'
+    )
 
 PREVIEW_TPL = """<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
@@ -160,15 +207,22 @@ def address_block_html(label, addrs, color="#555"):
 
 
 def home_link_html():
-    """文首引流条：小程序首页链接（编辑器会把 #小程序:// 识别为可点链接）"""
-    if not MP_HOME_LINK:
+    """文首引流条：小程序首页链接 + 首页小程序卡片（卡片可点直达首页）"""
+    if not MP_HOME_LINK and not (MP_MINI_CARD and WXAPP_APPID):
         return ""
+    text = (
+        f'<p style="margin:0;font-size:14px;line-height:1.75;color:{ACCENT_DEEP};">'
+        f"更多快闪内容可见小程序「{html.escape(MP_NAME)}」→ {html.escape(MP_HOME_LINK)}"
+        f"</p>"
+        if MP_HOME_LINK
+        else ""
+    )
     return (
         f'<section style="margin:0 0 16px;padding:10px 12px;background:{ACCENT_SOFT};'
         f'border-left:3px solid {ACCENT};border-radius:6px;">'
-        f'<p style="margin:0;font-size:14px;line-height:1.75;color:{ACCENT_DEEP};">'
-        f"更多快闪内容可见小程序「{html.escape(MP_NAME)}」→ {html.escape(MP_HOME_LINK)}"
-        f"</p></section>"
+        f"{text}"
+        f"{mini_card_html(MINI_HOME_PATH, f'{MP_NAME} · 首页')}"
+        f"</section>"
     )
 
 

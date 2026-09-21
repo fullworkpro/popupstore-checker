@@ -211,6 +211,12 @@ curl https://你的域名:9115/version.json
 
 > 只记录**功能性变更**（新能力 / 链路变更 / 影响使用的修复）；配色、文案、样式一类小改动不入表。
 
+### v1.4.18
+- **推文引流改成小程序卡片**：Short Link 服务端接口（`wxa/genwxashortlink`）实测对**个人主体小程序无权限**（`43104`），无法程序化生成「首页 / 详情页」可点链接；改为在正文插入微信原生的 `<mp-miniprogram>` 卡片 —— 文首一张跳**小程序首页**，文末一张跳**该店详情页**（同样不依赖任何受限接口）。可用 `MP_MINI_CARD=0` 关闭。
+- **引流文案纠偏**：小程序码 CTA 由「长按识别，直达本店详情」改为「长按识别，跳转小程序」，并删除「识别后直接打开这一家详情页」的说明（该能力待小程序端上传后才能验证）。
+- **首页链接可配置**：`MP_HOME_LINK` 支持环境变量或 `backend/data/.wechat_mp` 里的 `MP_HOME_LINK=` 覆盖（手机上打开首页 →「…」→复制页面链接即可取到）。
+- 新增 `backend/scripts/probe_shortlink.py`：一键探测当前小程序是否具备 Short Link 权限，日后主体升级可直接复查。
+
 ### v1.4.17
 - **修复公众号推送中断**：`push_wechat_draft.py` 未同步 v1.4.16 的二维码接口变更（`qrcode_bytes_for()` 返回值由 2 元组改为 `(bytes, ext, is_store_code)`），解包时报 `ValueError: too many values to unpack`，导致后台「公众号推送」整条链路不可用；已修正并补回归测试 `backend/scripts/test_push_qr_unpack.py`（覆盖上传 / dry-run / 无二维码降级三条路径）。
 

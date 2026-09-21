@@ -29,7 +29,7 @@ from clean_noise_drafts import _req, login, DATA_DIR  # noqa: E402
 from gen_weekly_wechat import (  # noqa: E402
     OUT_DIR, PREVIEW_TPL, _json_list, fmt_range, parse_dt,
     ACCENT, ACCENT_DEEP, ACCENT_SOFT, ACCENT_LINE, MUTED, MP_NAME, MP_SLOGAN,
-    MP_HOME_LINK, venue_lines, home_link_html,
+    MP_HOME_LINK, venue_lines, home_link_html, mini_card_html,
 )
 
 ASSETS = os.path.join(DATA_DIR, "assets")
@@ -293,18 +293,21 @@ def gallery_section(image_urls):
     return "".join(parts)
 
 
-def cta_section(qrcode_src, store_code=False):
-    """收尾引流区。store_code=True 时文案强调「直达本店详情」，便于核对码是否带店铺参数"""
+def cta_section(qrcode_src, store_code=False, store_id=None):
+    """收尾引流区：小程序码 +（可选）本店详情小程序卡片。
+
+    文案不再声称「识别后直达本店详情」：个人主体小程序用不了 Short Link，
+    专属码直达依赖小程序端解析 scene，尚未在现网验证，故统一写中性文案。
+    """
     qr = (
         f'<img src="{html.escape(qrcode_src)}" style="width:180px;height:180px;display:block;margin:0 auto;" />'
         if qrcode_src
         else ""
     )
-    headline = "长按识别，直达本店详情" if store_code else f"随时随地查快闪 · 就在「{MP_NAME}」小程序"
-    hint = (
-        "小程序码已带上本店参数，识别后直接打开这一家的详情页"
-        if store_code
-        else f"长按识别小程序码<br/>{html.escape(MP_SLOGAN)}"
+    headline = "长按识别，跳转小程序" if store_code else f"随时随地查快闪 · 就在「{MP_NAME}」小程序"
+    hint = f"长按识别小程序码<br/>{html.escape(MP_SLOGAN)}"
+    card = mini_card_html(
+        f"pages/detail/detail?id={store_id}" if store_id else "", "查看本店详情"
     )
     return (
         f'<section style="margin:26px 0 0;padding:20px 16px 22px;background:{ACCENT_SOFT};'
@@ -313,7 +316,8 @@ def cta_section(qrcode_src, store_code=False):
         f"{headline}</p>"
         f"{qr}"
         f'<p style="margin:12px 0 0;font-size:13px;color:{MUTED};line-height:1.8;">'
-        f"{hint}</p></section>"
+        f"{hint}</p>"
+        f"{card}</section>"
     )
 
 
@@ -322,7 +326,7 @@ def render_single(store, image_urls, qrcode_src=None, store_code=False):
         home_link_html()
         + info_section(store)
         + gallery_section(image_urls)
-        + cta_section(qrcode_src, store_code)
+        + cta_section(qrcode_src, store_code, store.get("id"))
     )
     return (
         '<section style="font-size:15px;color:#333;line-height:1.75;padding:2px 4px;">\n'
