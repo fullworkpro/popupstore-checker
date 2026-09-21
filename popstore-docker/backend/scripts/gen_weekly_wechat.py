@@ -35,6 +35,9 @@ MUTED = "#8a8a8a"         # 次要文字
 
 MP_NAME = os.environ.get("MP_NAME", "wing的附近溜达本")
 MP_SLOGAN = os.environ.get("MP_SLOGAN", "附近的联名快闪 / 特展 / 联名餐厅，随手一查")
+# 小程序首页链接：手机上打开小程序 → 右上角「…」→ 复制页面链接，形如 #小程序://名称/短码
+# 公众号编辑器会把这串文字自动识别为可点的小程序链接；留空则不加文首引流条。
+MP_HOME_LINK = os.environ.get("MP_HOME_LINK", "#小程序://wing的附近溜达本/vtREo1iRntOg2Kt")
 
 PREVIEW_TPL = """<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
@@ -108,14 +111,72 @@ def cover_of(it):
     return it.get("cover_image") or ""
 
 
+def venue_lines(store):
+    """「城市 + 地址」列表（不含 xx 区）；多城市店铺逐条列出
+
+    cities 是 JSON 数组 [{"city","district","address"}, ...]；
+    老数据没有 cities 时回退用主 city + address。
+    """
+    out, seen = [], set()
+
+    def _join(city, addr, district=""):
+        city, addr = (city or "").strip(), (addr or "").strip()
+        district = (district or "").strip()
+        # 推文只要「城市 + 地址」，不显示 xx 区：地址里若夹带了区名就去掉
+        if district and district in addr:
+            addr = addr.replace(district, "").strip(" ··")
+        if city and addr:
+            # 地址本身已以城市开头（如「广州时尚天河…」）时不再重复城市名
+            return addr if addr.startswith(city) else f"{city} · {addr}"
+        return city or addr
+
+    for c in _json_list(store.get("cities")):
+        if not isinstance(c, dict):
+            continue
+        line = _join(c.get("city"), c.get("address"), c.get("district"))
+        if line and line not in seen:
+            seen.add(line)
+            out.append(line)
+    if not out:
+        line = _join(store.get("city"), store.get("address"), store.get("district"))
+        if line:
+            out.append(line)
+    return out
+
+
+def address_block_html(label, addrs, color="#555"):
+    """单地点一行；多地点「地点：」后逐条列出"""
+    if not addrs:
+        return ""
+    esc = [html.escape(a) for a in addrs]
+    if len(esc) == 1:
+        return (f'<p style="margin:4px 0 0;font-size:14px;color:{color};">'
+                f'{label}{esc[0]}</p>')
+    rows = "".join(
+        f'<p style="margin:2px 0 2px 8px;font-size:14px;color:{color};">{a}</p>'
+        for a in esc
+    )
+    return (f'<p style="margin:4px 0 0;font-size:14px;color:{color};">{label}</p>{rows}')
+
+
+def home_link_html():
+    """文首引流条：小程序首页链接（编辑器会把 #小程序:// 识别为可点链接）"""
+    if not MP_HOME_LINK:
+        return ""
+    return (
+        f'<section style="margin:0 0 16px;padding:10px 12px;background:{ACCENT_SOFT};'
+        f'border-left:3px solid {ACCENT};border-radius:6px;">'
+        f'<p style="margin:0;font-size:14px;line-height:1.75;color:{ACCENT_DEEP};">'
+        f"更多快闪内容可见小程序「{html.escape(MP_NAME)}」→ {html.escape(MP_HOME_LINK)}"
+        f"</p></section>"
+    )
+
+
 def card_html(it):
     title = html.escape((it.get("title") or "").strip())
     sub = html.escape((it.get("subtitle") or "").strip())
-    address = " · ".join(
-        x for x in [it.get("district"), it.get("address")] if x
-    )
-    address = html.escape(address)
     period = fmt_range(parse_dt(it.get("start_date")), parse_dt(it.get("end_date")))
+    addrs = venue_lines(it)
     tags = [t for t in _json_list(it.get("tags")) if isinstance(t, str)]
     tags = [t for t in tags if t not in ("快闪", "快闪店", "二次元")]
     tag_html = ""
@@ -151,7 +212,7 @@ def card_html(it):
         f'<p style="margin:0;font-size:16px;font-weight:bold;line-height:1.5;color:#222;">{title}</p>'
         f'{sub_html}'
         f'<p style="margin:8px 0 0;font-size:14px;color:#555;">日期：{period}</p>'
-        + (f'<p style="margin:4px 0 0;font-size:14px;color:#555;">地点：{address}</p>' if address else "")
+        + address_block_html("地点：", addrs)
         + org_html
         + tag_html
         + img_html
@@ -160,7 +221,7 @@ def card_html(it):
 
 
 def render_html(items, title, lead):
-    body = []
+    body = [home_link_html()]
     if lead:
         body.append(
             f'<p style="margin:0 0 16px;font-size:15px;color:#555;line-height:1.8;">'
@@ -190,6 +251,8 @@ def render_html(items, title, lead):
 
 def render_md(items, title, lead):
     lines = [f"# {title}", ""]
+    if MP_HOME_LINK:
+        lines += [f"更多快闪内容可见小程序「{MP_NAME}」→ {MP_HOME_LINK}", ""]
     if lead:
         lines += [lead, ""]
     for city, group in pick_city_group(items):

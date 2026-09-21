@@ -7,10 +7,10 @@ from typing import List, Optional
 class Settings(BaseSettings):
     # ── 应用基础 ──
     APP_NAME: str = "PopStore Platform"
-    APP_VERSION: str = "1.4.15"
+    APP_VERSION: str = "1.4.16"
     # 部署标签：每次有意义的改动请手动 +1（如 2026-08-27-qiniu-admin-v1）。
     # 用于 /api/v1/version 接口与前端 /version.json 比对，确认 NAS 跑的是不是最新代码。
-    APP_DEPLOY_TAG: str = "2026-09-21-wechat-push-db-feed-v1.4.15"
+    APP_DEPLOY_TAG: str = "2026-09-22-mp-link-addr-tz-nowechat-v1.4.16"
     DEBUG: bool = True
 
     # ── 数据库 ──
@@ -74,8 +74,7 @@ class Settings(BaseSettings):
         "AppleWebKit/605.1.15 (KHTML, like Gecko) "
         "Version/16.0 Mobile/15E148 Safari/604.1"
     )
-    # 微信公众号搜索源（搜狗微信已不可用，这里保留配置作为参考）
-    CRAWLER_WECHAT_ACCOUNTS: List[str] = []
+    # 微信爬虫已于 v1.4.16 移除（搜狗微信搜索停服、无实际抓取能力）
     CRAWLER_XHS_KEYWORDS: List[str] = ["二次元快闪店", "快闪活动"]
     CRAWLER_WEIBO_TOPICS: List[str] = ["二次元快闪", "快闪店"]
 

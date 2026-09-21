@@ -12,7 +12,6 @@ from apscheduler.triggers.cron import CronTrigger
 from app.core.database import SessionLocal
 from app.core.config import settings
 from app.crawler.config_store import get_or_create_config
-from app.crawler.wechat_crawler import WechatCrawler
 from app.crawler.xiaohongshu_crawler import XiaohongshuCrawler
 from app.crawler.weibo_crawler import WeiboCrawler
 from app.services.archive import archive_expired_stores
@@ -83,15 +82,6 @@ def run_all_crawlers() -> str:
             logger.info("⏸️ 爬虫总开关已关闭（前端配置），本次定时任务跳过")
             return "爬虫已禁用（前端配置关闭）"
 
-        # 微信公众号（占位源，目前返回空）
-        try:
-            wc = WechatCrawler(db, accounts=settings.CRAWLER_WECHAT_ACCOUNTS)
-            log = wc.run(settings.CRAWLER_KEYWORDS[:3])
-            results.append(f"微信: {log.new_added} 新增 / {log.total_found} 发现")
-        except Exception as e:
-            logger.error(f"微信爬虫失败: {e}")
-            results.append(f"微信: 失败 ({e})")
-
         # 小红书（规划中，尚未实现爬虫；若用户在页面开启则给出提示并跳过）
         if cfg.xhs_enabled:
             logger.info("小红书爬虫尚未实现（待微博验证通过后开放），本次跳过")
@@ -152,10 +142,7 @@ def run_crawler_by_source(source: str) -> str:
     """单独运行某个数据源"""
     db = SessionLocal()
     try:
-        if source == "wechat":
-            crawler = WechatCrawler(db, accounts=settings.CRAWLER_WECHAT_ACCOUNTS)
-            log = crawler.run(settings.CRAWLER_KEYWORDS[:3])
-        elif source == "xiaohongshu":
+        if source == "xiaohongshu":
             return "小红书爬虫尚未实现（规划中）"
         elif source == "douyin":
             return "抖音爬虫尚未实现（规划中）"

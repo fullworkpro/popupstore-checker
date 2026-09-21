@@ -334,8 +334,15 @@ const logTotal = ref(0)
 const uidExpanded = ref(true)
 const keywordExpanded = ref(false)
 
-const fmt = (d) => d ? new Date(d).toLocaleString('zh-CN') : ''
-const sourceLabel = (s) => ({ wechat:'微信', xiaohongshu:'小红书', weibo:'微博', douyin:'抖音', crawler:'爬虫' }[s] || s)
+// 后端返回的时间可能带 +08:00 也可能不带，这里统一按北京时间渲染，避免显示成 GMT
+const fmt = (d) => {
+  if (!d) return ''
+  const dt = new Date(d)
+  if (Number.isNaN(dt.getTime())) return String(d)
+  return dt.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })
+}
+// 微信爬虫已于 v1.4.16 移除（搜狗微信搜索停服、无实际抓取能力），此处仅为历史日志保留标签
+const sourceLabel = (s) => ({ wechat:'微信(已下线)', xiaohongshu:'小红书', weibo:'微博', douyin:'抖音', crawler:'爬虫' }[s] || s)
 
 const loadConfig = async () => {
   loading.value = true

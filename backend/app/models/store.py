@@ -1,9 +1,25 @@
 """快闪店数据模型"""
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import Column, String, Text, DateTime, Integer, Boolean, Float, Enum as SAEnum
 from app.core.database import Base
 import enum
+
+CN_TZ = timezone(timedelta(hours=8))
+
+
+def utc_naive_to_cn_iso(dt):
+    """把「按 UTC 存储的朴素时间」转成带 +08:00 的 ISO 串。
+
+    背景：CrawlLog.created_at 用 datetime.now(timezone.utc) 生成，但 SQLAlchemy 的
+    DateTime 列（未开 timezone=True）落库时会丢掉 tzinfo，读回来是朴素 UTC。
+    直接吐给前端会被浏览器当成本地时间，显示成慢 8 小时。
+    """
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(CN_TZ).isoformat()
 
 
 class StoreStatus(str, enum.Enum):
@@ -136,7 +152,7 @@ class CrawlLog(Base):
             "error_count": self.error_count,
             "error_detail": self.error_detail,
             "status": self.status,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_at": utc_naive_to_cn_iso(self.created_at),
         }
 
 

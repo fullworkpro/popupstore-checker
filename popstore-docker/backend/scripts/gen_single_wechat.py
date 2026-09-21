@@ -29,6 +29,7 @@ from clean_noise_drafts import _req, login, DATA_DIR  # noqa: E402
 from gen_weekly_wechat import (  # noqa: E402
     OUT_DIR, PREVIEW_TPL, _json_list, fmt_range, parse_dt,
     ACCENT, ACCENT_DEEP, ACCENT_SOFT, ACCENT_LINE, MUTED, MP_NAME, MP_SLOGAN,
+    MP_HOME_LINK, venue_lines, home_link_html,
 )
 
 ASSETS = os.path.join(DATA_DIR, "assets")
@@ -140,14 +141,14 @@ def store_wxacode(store_id):
 
 
 def qrcode_bytes_for(store_id=None):
-    """优先店铺专属码，失败降级静态通用码。返回 (bytes, ext) 或 None"""
+    """优先店铺专属码，失败降级静态通用码。返回 (bytes, ext, is_store_code) 或 None"""
     if store_id:
         got = store_wxacode(store_id)
         if got:
-            return got
+            return got[0], got[1], True
     if os.path.exists(QRCODE):
         with open(QRCODE, "rb") as f:
-            return f.read(), os.path.splitext(QRCODE)[1].lstrip(".") or "png"
+            return f.read(), os.path.splitext(QRCODE)[1].lstrip(".") or "png", False
     return None
 
 
@@ -213,19 +214,37 @@ def info_section(store, qrcode_src=None):
     tags = [t for t in _json_list(store.get("tags")) if isinstance(t, str)]
     tags = [t for t in tags if t not in ("快闪", "快闪店", "二次元")]
     period = fmt_range(parse_dt(store.get("start_date")), parse_dt(store.get("end_date")))
-    addr = " · ".join(x for x in [store.get("district"), store.get("address")] if x)
+    # 地点只写「城市 + 地址」（不显示 xx 区）；多城市店铺逐条列出
+    addrs = [html.escape(a) for a in venue_lines(store)]
+    label = (f'<strong style="color:{MUTED};font-weight:normal;'
+             f'display:inline-block;width:38px;">地点</strong>')
+    if len(addrs) == 1:
+        addr_html = f'<p style="margin:6px 0;font-size:14px;color:#555;">{label}{addrs[0]}</p>'
+    elif len(addrs) > 1:
+        addr_html = (
+            f'<p style="margin:6px 0 2px;font-size:14px;color:#555;">{label}{addrs[0]}</p>'
+            + "".join(
+                f'<p style="margin:2px 0 2px 38px;font-size:14px;color:#555;">{a}</p>'
+                for a in addrs[1:]
+            )
+        )
+    else:
+        addr_html = ""
     rows = [("日期", period)]
-    if addr:
-        rows.append(("地点", html.escape(addr)))
     if store.get("organizer"):
         rows.append(("主办", html.escape(store["organizer"])))
     if store.get("reservation") == "yes":
         rows.append(("入场", "需预约，请留意主办方公告"))
-    rows_html = "".join(
-        f'<p style="margin:6px 0;font-size:14px;color:#555;">'
-        f'<strong style="color:{MUTED};font-weight:normal;display:inline-block;width:38px;">{k}</strong>{v}</p>'
-        for k, v in rows
-    )
+
+    def _row(k, v):
+        return (
+            f'<p style="margin:6px 0;font-size:14px;color:#555;">'
+            f'<strong style="color:{MUTED};font-weight:normal;display:inline-block;width:38px;">'
+            f"{k}</strong>{v}</p>"
+        )
+
+    # 顺序：日期 → 地点（可能多行）→ 主办 / 入场
+    rows_html = _row(*rows[0]) + addr_html + "".join(_row(k, v) for k, v in rows[1:])
     chips = "".join(
         f'<span style="display:inline-block;font-size:12px;color:{ACCENT};border:1px solid {ACCENT};'
         f'border-radius:10px;padding:1px 8px;margin:0 6px 4px 0;">{html.escape(t)}</span>'
@@ -274,28 +293,36 @@ def gallery_section(image_urls):
     return "".join(parts)
 
 
-def cta_section(qrcode_src):
+def cta_section(qrcode_src, store_code=False):
+    """收尾引流区。store_code=True 时文案强调「直达本店详情」，便于核对码是否带店铺参数"""
     qr = (
         f'<img src="{html.escape(qrcode_src)}" style="width:180px;height:180px;display:block;margin:0 auto;" />'
         if qrcode_src
         else ""
     )
+    headline = "长按识别，直达本店详情" if store_code else f"随时随地查快闪 · 就在「{MP_NAME}」小程序"
+    hint = (
+        "小程序码已带上本店参数，识别后直接打开这一家的详情页"
+        if store_code
+        else f"长按识别小程序码<br/>{html.escape(MP_SLOGAN)}"
+    )
     return (
         f'<section style="margin:26px 0 0;padding:20px 16px 22px;background:{ACCENT_SOFT};'
         f'border:1px solid {ACCENT_LINE};border-radius:10px;text-align:center;">'
         f'<p style="margin:0 0 12px;font-size:15px;font-weight:bold;color:{ACCENT};">'
-        f"随时随地查快闪 · 就在「{MP_NAME}」小程序</p>"
+        f"{headline}</p>"
         f"{qr}"
         f'<p style="margin:12px 0 0;font-size:13px;color:{MUTED};line-height:1.8;">'
-        f"长按识别小程序码<br/>{html.escape(MP_SLOGAN)}</p></section>"
+        f"{hint}</p></section>"
     )
 
 
-def render_single(store, image_urls, qrcode_src=None):
+def render_single(store, image_urls, qrcode_src=None, store_code=False):
     body = (
-        info_section(store)
+        home_link_html()
+        + info_section(store)
         + gallery_section(image_urls)
-        + cta_section(qrcode_src)
+        + cta_section(qrcode_src, store_code)
     )
     return (
         '<section style="font-size:15px;color:#333;line-height:1.75;padding:2px 4px;">\n'
@@ -305,13 +332,15 @@ def render_single(store, image_urls, qrcode_src=None):
 
 def render_md(store, image_urls, qrcode_src=None):
     period = fmt_range(parse_dt(store.get("start_date")), parse_dt(store.get("end_date")))
-    addr = " · ".join(x for x in [store.get("district"), store.get("address")] if x)
+    addrs = venue_lines(store)
     lines = [f"# {store.get('title')}", ""]
+    if MP_HOME_LINK:
+        lines += [f"更多快闪内容可见小程序「{MP_NAME}」→ {MP_HOME_LINK}", ""]
     if store.get("subtitle"):
         lines += [store["subtitle"], ""]
     lines += [f"- 日期：{period}"]
-    if addr:
-        lines.append(f"- 地点：{addr}")
+    for a in addrs:
+        lines.append(f"- 地点：{a}")
     if store.get("organizer"):
         lines.append(f"- 主办：{store['organizer']}")
     lines.append("")
@@ -356,8 +385,10 @@ def main():
     qrcode_src = None
     qr_local = None  # (bytes, ext) 供本地预览内嵌
     qr_pack = qrcode_bytes_for(store.get("id"))
+    is_store_code = bool(qr_pack and qr_pack[2])
     if qr_pack:
         qr_local = qr_pack
+        print(f"[二维码] {'店铺专属码（长按直达该店详情）' if is_store_code else '通用码（仅进首页）'}")
         if wx_token:
             ext = qr_pack[1]
             short_id = str(store.get("id") or "")[:8] or "home"
@@ -368,7 +399,7 @@ def main():
     else:
         print(f"[警告] 小程序码生成失败且无静态码 {QRCODE}，收尾区将没有二维码")
 
-    html_body = render_single(store, image_urls, qrcode_src)
+    html_body = render_single(store, image_urls, qrcode_src, is_store_code)
     md_body = render_md(store, image_urls, qrcode_src)
 
     os.makedirs(OUT_DIR, exist_ok=True)

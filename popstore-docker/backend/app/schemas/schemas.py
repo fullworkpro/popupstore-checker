@@ -1,7 +1,7 @@
 """Pydantic 请求/响应模型"""
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, field_serializer
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import re
 
 from app.models.store import STORE_TYPE_VALUES, DEFAULT_STORE_TYPE, store_type_label
@@ -169,6 +169,18 @@ class CrawlLogResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @field_serializer("created_at")
+    @classmethod
+    def _created_at_cn(cls, v):
+        """crawl_logs.created_at 存的是 UTC 朴素时间（SQLAlchemy DateTime 会丢掉 tzinfo），
+        直接吐给前端会被浏览器按本地时区解析成「慢 8 小时」。
+        这里统一补上 +08:00，前端显示即为北京时间。"""
+        if v is None:
+            return None
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=timezone.utc)
+        return v.astimezone(timezone(timedelta(hours=8))).isoformat()
 
 
 class CrawlLogListResponse(BaseModel):

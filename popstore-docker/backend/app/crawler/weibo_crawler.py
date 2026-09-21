@@ -725,10 +725,14 @@ class WeiboCrawler(BaseCrawler):
         from app.models.store import CrawlLog
         now = datetime.now()
         state = self._get_state()
+        # 增量抓取，但保留 lookback_days 的「回看下限」：
+        # 若只取「上次成功之后」，两次运行往往只隔几小时，品牌账号在这么窄的窗口里
+        # 基本没有新快闪帖，会长期 found=0。因此取「上次成功时刻」与「now-N天」中更早者。
+        floor = now - timedelta(days=self.lookback_days)
         if state and state.last_success_at:
-            since = state.last_success_at
+            since = min(state.last_success_at, floor)
         else:
-            since = now - timedelta(days=self.lookback_days)
+            since = floor
         until = now
 
         # 凭证选择（v1.4.9）：后台填写的登录态 Cookie 优先，未填时才自动领访客 SUB。
@@ -758,6 +762,7 @@ class WeiboCrawler(BaseCrawler):
 
         items_all: List[dict] = []
         errors: List[str] = []
+        hit_stats: List[str] = []  # 每个目标命中条数，用于日志诊断
 
         def _run_targets(targets, is_account: bool) -> None:
             """顺序抓取一组目标；单个目标失败不影响其余（错误汇总进 errors）。"""
@@ -768,6 +773,7 @@ class WeiboCrawler(BaseCrawler):
                         hits = self._collect_account_posts(t, since, until)
                     else:
                         hits = self._collect_posts(label, since, until)
+                    hit_stats.append(f"{label}×{len(hits)}")
                     for mb, matched, text, account_mode in hits:
                         item = self._parse_mblog(mb, matched, text, account_mode=account_mode)
                         if item:
@@ -855,13 +861,20 @@ class WeiboCrawler(BaseCrawler):
         if do_keywords:
             _targets_logged += list(self.keywords)
         keyword_field = ",".join(_targets_logged)
+        # 诊断摘要写进日志，便于在后台页面直接判断「没抓到」属于哪种情况
+        hits_txt = "、".join(s for s in hit_stats if not s.endswith("×0")) or "全部目标 0 命中"
+        diag = (f"[诊断] 窗口 {since:%m-%d %H:%M} ~ {until:%m-%d %H:%M}"
+                f"（回看 {self.lookback_days} 天）｜{len(hit_stats)} 个目标｜命中：{hits_txt}")
+        _err_txt = "\n".join(errors)
+        error_detail = f"{diag}\n{_err_txt}" if _err_txt else diag
+
         log = CrawlLog(
             source=self.source,
             keyword=keyword_field[:120],
             total_found=len(items_all),
             new_added=new_added,
             error_count=len(errors),
-            error_detail="\n".join(errors)[:2000],
+            error_detail=error_detail[:2000],
             status="failed" if errors else "success",
         )
         self.db.add(log)
