@@ -211,6 +211,9 @@ curl https://你的域名:9115/version.json
 
 > 只记录**功能性变更**（新能力 / 链路变更 / 影响使用的修复）；配色、文案、样式一类小改动不入表。
 
+### v1.4.17
+- **修复公众号推送中断**：`push_wechat_draft.py` 未同步 v1.4.16 的二维码接口变更（`qrcode_bytes_for()` 返回值由 2 元组改为 `(bytes, ext, is_store_code)`），解包时报 `ValueError: too many values to unpack`，导致后台「公众号推送」整条链路不可用；已修正并补回归测试 `backend/scripts/test_push_qr_unpack.py`（覆盖上传 / dry-run / 无二维码降级三条路径）。
+
 ### v1.4.16
 **后端 / 后台**
 - **公众号推文内容升级**：文首固定「更多快闪内容可见小程序」引流链接；地址改为**城市 + 地址**（不再显示 xx 区），**多城市活动逐条列出**。

@@ -141,7 +141,7 @@ def build_article(store, wx: str, date_tag: str, light: bool, url_link: str = ""
     store_code = bool(qr_pack and qr_pack[2])
     print(f"  [二维码] {'店铺专属码（长按直达该店详情）' if store_code else '通用码（仅进首页，未配小程序凭据或接口失败）'}")
     if qr_pack:
-        qr_data, qr_ext = qr_pack
+        qr_data, qr_ext, _ = qr_pack  # (bytes, ext, is_store_code)
         if not upload:
             qrcode_src = None
         else:
