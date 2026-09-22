@@ -39,6 +39,7 @@
             <el-option label="爬虫" value="crawler" />
             <el-option label="微信" value="wechat" />
             <el-option label="小红书" value="xiaohongshu" />
+            <el-option label="策展导入" value="curated" />
             <el-option label="微博" value="weibo" />
           </el-select>
         </el-form-item>
@@ -422,6 +423,7 @@ const handleDelete = async (id) => {
 const typeLabel = (row) => row.store_type_label || typeMap[row.store_type] || '联名快闪'
 const sourceLabel = (s) => ({
   manual: '手动', crawler: '爬虫', wechat: '微信', xiaohongshu: '小红书', weibo: '微博',
+  curated: '策展导入',
 }[s] || s)
 const statusType = (s) => ({
   published: 'success', draft: 'warning', archived: 'info', rejected: 'danger',
