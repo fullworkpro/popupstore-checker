@@ -46,26 +46,42 @@ Page({
     cities: [],
     tagList: [],
     isFav: false,
+    noId: false,
   },
 
   onLoad(options) {
-    // 普通跳转：pages/detail/detail?id=xxx
-    // 扫码进入：小程序码 scene=id%3Dxxx（需 decodeURIComponent）
-    let id = options.id || ''
-    if (!id && options.scene) {
-      try {
-        const scene = decodeURIComponent(options.scene || '')
-        const m = /id=([^&]+)/.exec(scene)
-        if (m) id = m[1]
-      } catch (e) {
-        id = ''
-      }
-    }
+    const id = this.pickStoreId(options)
     if (id) {
       const isFav = getFavIds().includes(id)
       this.setData({ isFav })
       this.fetchDetail(id)
+    } else {
+      // 扫码进入但没解析出店铺参数：显性提示（多半是线上版本太旧，没带 scene 解析）
+      this.setData({ noId: true })
     }
+  },
+
+  // 从入参里尽量多地把店铺 ID 抠出来：
+  // 1) 普通跳转 options.id
+  // 2) 小程序码 scene=id=xxx（前缀匹配用，后端支持 8~35 位）
+  // 3) scene 里是裸 id（没有 id= 前缀的旧码）
+  // 4) 普通二维码 q=URL参数
+  pickStoreId(options) {
+    if (options.id) return options.id
+    const raws = [options.scene, options.q].filter(Boolean)
+    for (const raw of raws) {
+      let s = String(raw)
+      try { s = decodeURIComponent(s) } catch (e) { /* 保底用原文 */ }
+      let m = /id=([0-9a-zA-Z-]{8,40})/.exec(s)
+      if (m) return m[1]
+      m = /^([0-9a-zA-Z-]{8,40})$/.exec(s.trim())
+      if (m) return m[1]
+    }
+    return ''
+  },
+
+  goHome() {
+    wx.switchTab({ url: '/pages/index/index' })
   },
 
   async fetchDetail(id) {

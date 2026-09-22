@@ -148,3 +148,35 @@
   border-radius: 40rpx;
   font-size: 30rpx;
 }
+
+/* 扫码未识别到店铺参数的提示态 */
+.no-id {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 160rpx 60rpx 0;
+}
+.no-id-emoji {
+  font-size: 88rpx;
+  margin-bottom: 24rpx;
+}
+.no-id-title {
+  font-size: 34rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 16rpx;
+}
+.no-id-desc {
+  font-size: 26rpx;
+  color: #999;
+  line-height: 1.7;
+  text-align: center;
+  margin-bottom: 48rpx;
+}
+.no-id-btn {
+  background: #6C5CE7;
+  color: #fff;
+  border-radius: 40rpx;
+  font-size: 30rpx;
+  padding: 0 60rpx;
+}

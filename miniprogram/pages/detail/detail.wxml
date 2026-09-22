@@ -1,4 +1,13 @@
 <view class="container">
+  <!-- 扫码进入但未解析到店铺参数：显性提示，避免空白页让人误以为跳转失败 -->
+  <view class="no-id" wx:if="{{noId}}">
+    <text class="no-id-emoji">🔍</text>
+    <text class="no-id-title">未识别到店铺参数</text>
+    <text class="no-id-desc">当前小程序版本可能较旧，请先把微信和小程序更新到最新，或直接去首页浏览</text>
+    <button class="no-id-btn" bindtap="goHome">去首页逛逛</button>
+  </view>
+
+  <block wx:else>
   <!-- 图片轮播：多图时以 slide 形式展示 -->
   <swiper
     class="img-swiper"
@@ -79,5 +88,6 @@
     </view>
     <button open-type="share" class="share-inner">分享给好友</button>
   </view>
+  </block>
 
 </view>
