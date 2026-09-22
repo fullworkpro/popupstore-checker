@@ -29,7 +29,8 @@ from clean_noise_drafts import _req, login, DATA_DIR  # noqa: E402
 from gen_weekly_wechat import (  # noqa: E402
     OUT_DIR, PREVIEW_TPL, _json_list, fmt_range, parse_dt,
     ACCENT, ACCENT_DEEP, ACCENT_SOFT, ACCENT_LINE, MUTED, MP_NAME, MP_SLOGAN,
-    MP_HOME_LINK, venue_lines, home_link_html, mini_card_html, weapp_text_link_html,
+    MP_HOME_LINK, MINI_HOME_PATH, venue_lines, home_link_html, mini_card_html,
+    weapp_text_link_html,
 )
 
 ASSETS = os.path.join(DATA_DIR, "assets")
@@ -304,7 +305,11 @@ def cta_section(qrcode_src, store_code=False, store_id=None):
         if qrcode_src
         else ""
     )
-    headline = "长按识别，跳转小程序" if store_code else f"随时随地查快闪 · 就在「{MP_NAME}」小程序"
+    # 文案固定为中性表述（v1.4.23）：不再声称「识别后直达本店详情」——
+    # 专属码是否直达取决于小程序端 scene 解析，用户侧难以自证，故只说「跳转小程序」。
+    # 小程序名是微信文字链接，点击直达小程序首页；本店详情另有下方独立文字链接。
+    name_link = weapp_text_link_html(MINI_HOME_PATH) or html.escape(MP_NAME)
+    headline = f"随时随地查快闪 · 就在「{name_link}」小程序"
     hint = f"长按识别小程序码<br/>{html.escape(MP_SLOGAN)}"
     card = mini_card_html(
         f"pages/detail/detail?id={store_id}" if store_id else "", "查看本店详情"
