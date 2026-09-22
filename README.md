@@ -211,6 +211,18 @@ curl https://你的域名:9115/version.json
 
 > 只记录**功能性变更**（新能力 / 链路变更 / 影响使用的修复）；配色、文案、样式一类小改动不入表。
 
+### v1.4.21
+- **修复微博爬虫「连接被对端关闭」导致整个关键词被跳过**：`('Connection aborted.', RemoteDisconnected(...))` 此前不属 `ok=-100`，不会被退避重试，异常直接冒泡到目标循环，表现为「某个 IP 关键词整轮无数据 + 记为失败」。现在：
+  - `_get_index()` 捕获 `requests` 网络异常（断连 / 超时）并退避重试，耗尽后返回 `None` 放弃该目标而非抛出；
+  - `_throttle()` 在两次请求间隔超过 `CONN_IDLE_RESET`（20s）时主动丢弃连接池 —— 根因是关键词间隔 60s 已超过微博 keep-alive 超时，复用「死连接」必然断连；
+  - Session 装载 urllib3 连接层重试适配器（`Retry(total=2, read=2)`），读接口幂等；
+  - 运行结束的连接层诊断日志：提示检查是否同一出口 IP 并发跑多个爬虫 / Cookie 是否过期。
+- 新增 `backend/scripts/test_weibo_conn_resilience.py`（离线，9 项断言）。
+
+### v1.4.20
+- **后台来源列 / 筛选支持「策展导入」**：策展导入落库的 `source=curated` 此前在列表里原样显示英文，现显示「策展导入」并加入筛选下拉（与「手动 / 爬虫 / 微博」区分）。
+- 前端 `dist` 构建产物同步进 `popstore-docker/` 部署副本（此前长期停留在 v1.4.8，导致线上 `/version.json` 指纹不新）。
+
 ### v1.4.19
 - **修复公众号推送失败（45166 invalid content）**：v1.4.18 在正文插入的 `<mp-miniprogram>` 小程序卡片被微信 `draft/add` 拒绝（三种写法实测均为 45166，该标签只能由公众号编辑器插入，接口不可自定义）。现改为**默认关闭**，`MP_MINI_CARD=1` 才会带上；推送前若检测到该标签会提前告警。
 - 新增 `backend/scripts/probe_minicard.py`：用同一张封面试多种标签写法，一键确认当前号是否接受小程序卡片。

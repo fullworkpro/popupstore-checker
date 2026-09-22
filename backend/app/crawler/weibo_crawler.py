@@ -80,8 +80,47 @@ CJK = r"[\u4e00-\u9fff]"
 # 因此必须做「请求间隔 + 关键词间大间隔 + 退避重试」。
 REQUEST_INTERVAL = 5.0   # 同一关键词内两次请求（翻页/长文）的最小间隔（秒），含随机抖动
 KEYWORD_INTERVAL = 60.0  # 两个关键词之间的额外间隔（秒）；限流严重时可继续加大（如 120）
-MAX_RETRIES = 3          # 遇到 ok=-100 时的最大重试次数
+MAX_RETRIES = 3          # 遇到 ok=-100 / 连接中断 时的最大重试次数
 RETRY_BACKOFF = 20.0     # 退避基数（秒）：第 1/2/3 次重试分别等 20/40/60 秒
+# 连接池空闲阈值（秒）：两次请求间隔超过此值时，服务端（或 WAF）多半已单方面关闭
+# keep-alive 连接，客户端复用这条「死连接」会直接抛
+#   ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+# 关键词间隔 60s 远大于微博的 keep-alive 超时，故必须在发请求前主动丢弃连接池。
+CONN_IDLE_RESET = 20.0
+
+
+def _mount_retry_adapter(session: "requests.Session") -> None:
+    """给 Session 挂上连接层重试（urllib3 Retry）。
+
+    requests 默认 max_retries=0，一旦遇到「对端在返回响应前就断开连接」
+    （RemoteDisconnected / Connection aborted）不会重试，异常会直接冒泡到调用方，
+    表现为整个关键词被跳过。这里在更底层补上 connect/read 重试，读接口是幂等 GET，安全。
+    """
+    try:
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+
+        try:
+            retry = Retry(
+                total=2, connect=2, read=2, status=2,
+                backoff_factor=1.0,
+                status_forcelist=(429, 500, 502, 503, 504),
+                allowed_methods=frozenset(["GET"]),
+                raise_on_status=False,
+            )
+        except TypeError:  # urllib3 < 1.26 老参数名
+            retry = Retry(
+                total=2, connect=2, read=2, status=2,
+                backoff_factor=1.0,
+                status_forcelist=(429, 500, 502, 503, 504),
+                method_whitelist=frozenset(["GET"]),
+                raise_on_status=False,
+            )
+        adapter = HTTPAdapter(max_retries=retry, pool_connections=4, pool_maxsize=8)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+    except Exception as e:  # 装不上也不影响主流程（上层还有自己的重试）
+        logger.warning("[weibo] 连接重试适配器装载失败（忽略）: %s", e)
 
 
 class WeiboSearchError(Exception):
@@ -354,6 +393,7 @@ class WeiboCrawler(BaseCrawler):
             "X-Requested-With": "XMLHttpRequest",
             "Referer": "https://m.weibo.cn/",
         })
+        _mount_retry_adapter(self.session)
         # Cookie 不在初始化时设置；统一在 run() 开头由 _ensure_visitor_sub() 决定：
         # v1.4.9 起手填 Cookie 优先，未填时才自动领访客 SUB。
 
@@ -473,7 +513,17 @@ class WeiboCrawler(BaseCrawler):
 
     # ── 网络：全站关键词搜索 ──
     def _throttle(self) -> None:
-        """保证两次请求之间至少间隔 request_interval 秒（含随机抖动），规避微博限流。"""
+        """保证两次请求之间至少间隔 request_interval 秒（含随机抖动），规避微博限流。
+
+        另外：距上次请求超过 CONN_IDLE_RESET 秒时，主动丢弃连接池。
+        长间隔后 HTTP keep-alive 连接通常已被对端关闭，复用会得到 RemoteDisconnected；
+        这里提前 close 掉（只关连接池，Cookie / headers 不受影响）强制下次新建连接。
+        """
+        if self._last_req_ts and (time.time() - self._last_req_ts) > CONN_IDLE_RESET:
+            try:
+                self.session.close()
+            except Exception:
+                pass
         gap = self.request_interval + random.uniform(0, 0.6)
         wait = gap - (time.time() - self._last_req_ts)
         if wait > 0:
@@ -517,6 +567,19 @@ class WeiboCrawler(BaseCrawler):
                     time.sleep(backoff)
                 else:
                     logger.error("[weibo] 多次限流失败，放弃: %s", e)
+            except requests.exceptions.RequestException as e:
+                # 网络层异常：RemoteDisconnected / Connection aborted / Timeout 等。
+                # 多为对端(或 WAF)在返回响应前主动断开，属于可重试错误；
+                # 退避后重试，避免一次抖动就让整个关键词颗粒无收。
+                if attempt < self.max_retries:
+                    backoff = self.retry_backoff * (attempt + 1)
+                    logger.warning(
+                        "[weibo] 连接中断(%s)，%.0f 秒后重试(%d/%d)",
+                        type(e).__name__, backoff, attempt + 1, self.max_retries,
+                    )
+                    time.sleep(backoff)
+                else:
+                    logger.error("[weibo] 多次连接中断，放弃: %s", e)
         return None
 
     def _search(self, keyword: str, page: int) -> Optional[List[dict]]:
@@ -836,6 +899,17 @@ class WeiboCrawler(BaseCrawler):
                     "此时唯一的出路是在「爬虫」页面手动填写有效微博 Cookie（仅住宅宽带 IP 下有效）；"
                     "若 NAS 走的是云/机房 IP，则微博抓取基本不可用，建议改用本地宽带机器跑爬虫。"
                 )
+
+        # 连接层诊断：对端在返回响应前就断开（RemoteDisconnected / Connection aborted）。
+        # 常见三类原因：① 长间隔后复用已被关闭的 keep-alive 连接（已由 CONN_IDLE_RESET 处理）；
+        # ② WAF 判异常后单方面断连；③ 本地网络/代理抖动。
+        if any(("RemoteDisconnected" in e or "Connection aborted" in e) for e in errors):
+            logger.error(
+                "[weibo] ⚠️ 出现连接被对端关闭（RemoteDisconnected）：已做退避重试仍失败。"
+                "优先排查：① 是否在同一出口 IP 上并发跑了多个爬虫（本机 automation 与 NAS 会互相污染）；"
+                "② 手填 Cookie 是否过期被 WAF 判异常；③ 若反复出现，"
+                "可调大 weibo_crawler.py 顶部的 KEYWORD_INTERVAL（如 120）降低请求密度。"
+            )
 
         # 运行内去重
         seen, uniq = set(), []
