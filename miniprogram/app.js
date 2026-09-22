@@ -6,11 +6,19 @@ const MANUAL_ENV = 'release'
 // 小程序端版本标记：miniprogram/ 不在 popstore-docker/ 内，不随 docker 部署，
 // 必须另用微信开发者工具上传发布。改了小程序却「没生效」时，先在开发者工具
 // 控制台确认这里打印的版本是否为最新。
-const MP_VERSION = '2026-09-23-scene-visible-fallback-mini-v1.4.17'
+const MP_VERSION = '2026-09-23-scene-home-fallback-mini-v1.4.18'
 
 App({
-  onLaunch() {
+  onLaunch(options) {
     console.log('PopStore 小程序启动 | 版本:', MP_VERSION)
+
+    // 记下启动参数：扫码进小程序时，query 里会带 scene（店铺 ID）。
+    // 之所以存全局：实测 path 可能不被执行而直接落到首页，
+    // 之后由首页读取这里的参数再主动跳详情页（见 utils/scene.js）。
+    this.globalData.launchQuery = (options && options.query) || {}
+    if (options && options.query && Object.keys(options.query).length) {
+      console.log('[launch] 带启动参数:', JSON.stringify(options.query))
+    }
 
     // 根据小程序运行环境自动切换 API 地址
     // envVersion: develop(开发版) / trial(体验版) / release(正式版)
@@ -37,6 +45,7 @@ App({
     console.log('当前 API:', this.globalData.apiBase, '| env:', env)
   },
   globalData: {
-    apiBase: 'http://127.0.0.1:8000/api/v1'
-  }
+    apiBase: 'http://127.0.0.1:8000/api/v1',
+    launchQuery: {},
+  },
 })

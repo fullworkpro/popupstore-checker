@@ -1,4 +1,5 @@
 const { getStoreDetail, resolveImage } = require('../../utils/api')
+const { parseStoreId, getLaunchQuery } = require('../../utils/scene')
 
 function parseISO(str) {
   if (!str) return null
@@ -47,38 +48,38 @@ Page({
     tagList: [],
     isFav: false,
     noId: false,
+    sceneDebug: '',
   },
 
   onLoad(options) {
-    const id = this.pickStoreId(options)
+    let id = parseStoreId(options)
+    let debug = this._dumpQuery(options)
+    if (!id) {
+      // 再兜一层：读本次启动的参数（path 没被执行、被首页转发过来时靠这个）
+      const lq = getLaunchQuery()
+      id = parseStoreId(lq)
+      debug = debug || this._dumpQuery(lq)
+    }
     if (id) {
       const isFav = getFavIds().includes(id)
       this.setData({ isFav })
       this.fetchDetail(id)
     } else {
-      // 扫码进入但没解析出店铺参数：显性提示（多半是线上版本太旧，没带 scene 解析）
-      this.setData({ noId: true })
+      // 扫码进入但没解析出店铺参数：显性提示 + 把原始参数摊开，便于定位
+      this.setData({ noId: true, sceneDebug: debug })
+      console.warn('[scene] 详情页未解析到店铺 ID，原始参数:', debug)
     }
   },
 
-  // 从入参里尽量多地把店铺 ID 抠出来：
-  // 1) 普通跳转 options.id
-  // 2) 小程序码 scene=id=xxx（前缀匹配用，后端支持 8~35 位）
-  // 3) scene 里是裸 id（没有 id= 前缀的旧码）
-  // 4) 普通二维码 q=URL参数
-  pickStoreId(options) {
-    if (options.id) return options.id
-    const raws = [options.scene, options.q].filter(Boolean)
-    for (const raw of raws) {
-      let s = String(raw)
-      try { s = decodeURIComponent(s) } catch (e) { /* 保底用原文 */ }
-      let m = /id=([0-9a-zA-Z-]{8,40})/.exec(s)
-      if (m) return m[1]
-      m = /^([0-9a-zA-Z-]{8,40})$/.exec(s.trim())
-      if (m) return m[1]
+  _dumpQuery(q) {
+    try {
+      return JSON.stringify(q || {})
+    } catch (e) {
+      return String(q)
     }
-    return ''
   },
+
+  // 店铺 ID 的解析已抽到 utils/scene.js（首页兜底跳转也复用同一份逻辑）
 
   goHome() {
     wx.switchTab({ url: '/pages/index/index' })

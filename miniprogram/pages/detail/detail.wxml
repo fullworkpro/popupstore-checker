@@ -4,6 +4,7 @@
     <text class="no-id-emoji">🔍</text>
     <text class="no-id-title">未识别到店铺参数</text>
     <text class="no-id-desc">当前小程序版本可能较旧，请先把微信和小程序更新到最新，或直接去首页浏览</text>
+    <text class="no-id-debug" wx:if="{{sceneDebug}}" selectable>启动参数：{{sceneDebug}}</text>
     <button class="no-id-btn" bindtap="goHome">去首页逛逛</button>
   </view>
 

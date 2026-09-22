@@ -1,4 +1,5 @@
 const { getStores, resolveImage } = require('../../utils/api')
+const { parseStoreId, getLaunchQuery } = require('../../utils/scene')
 
 // 为每个快闪店分配一个颜色，日历色条与列表左侧色条共用，便于对应
 const PALETTE = [
@@ -144,6 +145,18 @@ Page({
       this.buildCalendar()
       this.loadStores()
     })
+
+    // 扫码兜底：若这次启动是扫店铺专属码进来的（即便 path 没生效、落在首页），
+    // 首页主动跳到对应详情页，保证「扫哪家进哪家」。
+    this._redirectFromScene()
+  },
+
+  _redirectFromScene() {
+    const query = getLaunchQuery()
+    const id = parseStoreId(query)
+    if (!id) return
+    console.log('[scene] 首页识别到店铺参数，跳转详情页:', id)
+    wx.navigateTo({ url: '/pages/detail/detail?id=' + id })
   },
 
   // Storage 读取兜底：小程序存储不可用（如隐私模式/超配额）时不影响主流程

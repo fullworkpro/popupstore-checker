@@ -180,3 +180,15 @@
   font-size: 30rpx;
   padding: 0 60rpx;
 }
+
+/* 启动参数原文（排查扫码跳不跳转时看这个） */
+.no-id-debug {
+  font-size: 22rpx;
+  color: #bbb;
+  background: #f6f6f8;
+  border-radius: 8rpx;
+  padding: 12rpx 16rpx;
+  margin: 0 0 32rpx;
+  width: 100%;
+  word-break: break-all;
+}
