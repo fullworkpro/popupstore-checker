@@ -29,7 +29,7 @@ from clean_noise_drafts import _req, login, DATA_DIR  # noqa: E402
 from gen_weekly_wechat import (  # noqa: E402
     OUT_DIR, PREVIEW_TPL, _json_list, fmt_range, parse_dt,
     ACCENT, ACCENT_DEEP, ACCENT_SOFT, ACCENT_LINE, MUTED, MP_NAME, MP_SLOGAN,
-    MP_HOME_LINK, venue_lines, home_link_html, mini_card_html,
+    MP_HOME_LINK, venue_lines, home_link_html, mini_card_html, weapp_text_link_html,
 )
 
 ASSETS = os.path.join(DATA_DIR, "assets")
@@ -309,6 +309,19 @@ def cta_section(qrcode_src, store_code=False, store_id=None):
     card = mini_card_html(
         f"pages/detail/detail?id={store_id}" if store_id else "", "查看本店详情"
     )
+    # 文字链接（微信编辑器同款 <a>）：v1.4.22 实测 draft/add 接受且属性不被清洗，
+    # 是本店详情唯一可程序化生成的可点入口（Short Link / 卡片标签都受限于个人主体）。
+    detail_link = (
+        weapp_text_link_html(f"pages/detail/detail?id={store_id}", "查看本店详情")
+        if store_id
+        else ""
+    )
+    detail_p = (
+        f'<p style="margin:14px 0 0;font-size:14px;color:{ACCENT_DEEP};line-height:1.8;">'
+        f"在小程序里查看本店详情：{detail_link}</p>"
+        if detail_link
+        else ""
+    )
     return (
         f'<section style="margin:26px 0 0;padding:20px 16px 22px;background:{ACCENT_SOFT};'
         f'border:1px solid {ACCENT_LINE};border-radius:10px;text-align:center;">'
@@ -317,6 +330,7 @@ def cta_section(qrcode_src, store_code=False, store_id=None):
         f"{qr}"
         f'<p style="margin:12px 0 0;font-size:13px;color:{MUTED};line-height:1.8;">'
         f"{hint}</p>"
+        f"{detail_p}"
         f"{card}</section>"
     )
 

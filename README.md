@@ -211,6 +211,17 @@ curl https://你的域名:9115/version.json
 
 > 只记录**功能性变更**（新能力 / 链路变更 / 影响使用的修复）；配色、文案、样式一类小改动不入表。
 
+### v1.4.22
+- **推文引流改用微信小程序「文字链接」**：文首那段的小程序名现在是编辑器同款的
+  `<a class="weapp_text_link" data-miniprogram-*>`，点击直达小程序首页；紫色卡片底与左边框保持不变。
+  实测 `draft/add` **接受该标签**（成功只返回 media_id、无 errcode），并用 `draft/get` 回查确认
+  `data-miniprogram-appid/path` 属性未被清洗 —— 这是继 Short Link（43104）、`<mp-miniprogram>`（45166）
+  之后，**第一条程序化生成「可点跳小程序」的可用路径**。
+- **文末新增本店详情文字链接**：单篇推文的 CTA 区增加「在小程序里查看本店详情」，
+  跳 `pages/detail/detail?id=<店铺ID>`，同样已实测保留。
+- 开关：`.wechat_mp` 里 `MP_WEAPP_LINK=0` 回退到旧的 `#小程序://` 纯文本。
+- 新增 `backend/scripts/probe_weapplink.py`：一键试多种文字链接写法并回查属性是否被保留。
+
 ### v1.4.21
 - **修复微博爬虫「连接被对端关闭」导致整个关键词被跳过**：`('Connection aborted.', RemoteDisconnected(...))` 此前不属 `ok=-100`，不会被退避重试，异常直接冒泡到目标循环，表现为「某个 IP 关键词整轮无数据 + 记为失败」。现在：
   - `_get_index()` 捕获 `requests` 网络异常（断连 / 超时）并退避重试，耗尽后返回 `None` 放弃该目标而非抛出；

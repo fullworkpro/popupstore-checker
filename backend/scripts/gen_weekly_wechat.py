@@ -20,6 +20,7 @@ import json
 import os
 import sys
 from datetime import datetime, timedelta
+from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from clean_noise_drafts import _req, login, DATA_DIR  # noqa: E402
@@ -70,6 +71,34 @@ MP_MINI_CARD = (os.environ.get("MP_MINI_CARD") or _CRED.get("MP_MINI_CARD", "0")
     "0", "false", "False", "no",
 )
 MINI_HOME_PATH = os.environ.get("MINI_HOME_PATH", "pages/index/index")
+
+# 小程序「文字链接」：微信编辑器插入小程序的原生产物（<a class="weapp_text_link">），
+# 点击直达 data-miniprogram-path 指定页面。v1.4.22 起作为文首引流的首选形态：
+# 只要 data-* 属性齐全，微信端会把它渲染成可点的蓝色小程序文字链接。
+# 设为 0 可回退到旧的 #小程序:// 纯文本（.wechat_mp 里写 MP_WEAPP_LINK=0）。
+MP_WEAPP_LINK = (os.environ.get("MP_WEAPP_LINK") or _CRED.get("MP_WEAPP_LINK", "1")) not in (
+    "0", "false", "False", "no",
+)
+
+
+def weapp_text_link_html(path: str, text: Optional[str] = None) -> str:
+    """生成微信小程序文字链接（等价于编辑器里「插入小程序 → 文字」）。
+
+    - path：小程序页面路径，如 pages/index/index、pages/detail/detail?id=xxx
+    - text：链接文字，默认用小程序名
+    - 缺少 WXAPP_APPID 或开关关闭时返回空串，调用方需自行兜底
+    """
+    if not MP_WEAPP_LINK or not WXAPP_APPID or not path:
+        return ""
+    return (
+        f'<a class="weapp_text_link js_weapp_entry wx_tap_link js_wx_tap_highlight" '
+        f'data-miniprogram-type="text" '
+        f'data-miniprogram-appid="{html.escape(WXAPP_APPID)}" '
+        f'data-miniprogram-path="{html.escape(path)}" '
+        f'data-miniprogram-nickname="{html.escape(MP_NAME)}" '
+        f'data-miniprogram-servicetype="0" data-miniprogram-applink="" href="">'
+        f"{html.escape(text or MP_NAME)}</a>"
+    )
 
 
 def mini_card_html(path: str, title: str):
@@ -209,16 +238,25 @@ def address_block_html(label, addrs, color="#555"):
 
 
 def home_link_html():
-    """文首引流条：小程序首页链接 + 首页小程序卡片（卡片可点直达首页）"""
-    if not MP_HOME_LINK and not (MP_MINI_CARD and WXAPP_APPID):
+    """文首引流条（浅紫底 + 紫色左边框）：小程序名即为可点文字链接，直达小程序首页。
+
+    优先用微信编辑器同款的 <a class="weapp_text_link">（v1.4.22），
+    未配置小程序 appid 时退回 #小程序:// 纯文本。
+    """
+    link = weapp_text_link_html(MINI_HOME_PATH)
+    if link:
+        text = (
+            f'<p style="margin:0;font-size:14px;line-height:1.75;color:{ACCENT_DEEP};">'
+            f"更多快闪内容可见小程序☞「{link}」</p>"
+        )
+    elif MP_HOME_LINK:
+        text = (
+            f'<p style="margin:0;font-size:14px;line-height:1.75;color:{ACCENT_DEEP};">'
+            f"更多快闪内容可见小程序「{html.escape(MP_NAME)}」→ {html.escape(MP_HOME_LINK)}"
+            f"</p>"
+        )
+    else:
         return ""
-    text = (
-        f'<p style="margin:0;font-size:14px;line-height:1.75;color:{ACCENT_DEEP};">'
-        f"更多快闪内容可见小程序「{html.escape(MP_NAME)}」→ {html.escape(MP_HOME_LINK)}"
-        f"</p>"
-        if MP_HOME_LINK
-        else ""
-    )
     return (
         f'<section style="margin:0 0 16px;padding:10px 12px;background:{ACCENT_SOFT};'
         f'border-left:3px solid {ACCENT};border-radius:6px;">'
