@@ -56,6 +56,10 @@ IP_ALIASES = {
     "迪士尼": ["迪士尼", "disney", "疯狂动物城"],
     "蜡笔小新": ["蜡笔小新"],
     "哆啦A梦": ["哆啦a梦", "哆啦A梦", "机器猫"],
+    "JOJO的奇妙冒险": ["jojo", "jojo的奇妙冒险", "乔乔的奇妙冒险", "jojo奇妙冒险"],
+    "银魂": ["银魂", "gintama", "坂田银时"],
+    "犬夜叉": ["犬夜叉", "inuyasha"],
+    "全知读者视角": ["全知读者视角", "omniscient reader", "全知读者"],
 }
 
 # 账号名里需要剥掉的噪声后缀（厂商/地区/认证词），仅在没匹配到 IP 时用作兜底标签
@@ -64,13 +68,18 @@ _ACCOUNT_NOISE = re.compile(
 
 
 def derive_ip_tags(title: str, organizer: str, matched: List[str] = None) -> List[str]:
-    """推导标签：优先作品名（IP），最多 2 个；匹配不到才退化成清洗后的账号名。"""
+    """标签只放作品名（IP），最多 2 个。
+
+    v1.4.24 起不再用账号名兜底：账号名是厂商/店名（如「XX主题餐厅」），不是 IP，
+    塞进 tags 会污染标签。找不到 IP 时退回配置里的关键词——关键词本身就是 IP 名
+    （见 CrawlerConfig.keywords）；再没有就留空，交给人工补。
+    """
     text = f"{title or ''} {organizer or ''} {' '.join(matched or [])}".lower()
     hits = [ip for ip, aliases in IP_ALIASES.items() if any(a.lower() in text for a in aliases)]
     if hits:
         return hits[:2]
-    name = _ACCOUNT_NOISE.sub("", organizer or "").strip()
-    return [name] if name else []
+    ips = [m.strip() for m in (matched or []) if m and m.strip()]
+    return ips[:2]
 
 CJK = r"[\u4e00-\u9fff]"
 
@@ -249,6 +258,135 @@ def extract_title(text: str) -> str:
     if len(first) > 80:
         return first[:80] + "…"
     return first
+
+
+def strip_bracket_prefix(s: str) -> str:
+    """去掉开头连续的【…】括号（原标题里的城市/标签），避免与新加的城市前缀重复。"""
+    s = (s or "").strip()
+    while True:
+        m = re.match(r"^【[^】]{0,30}】\s*", s)
+        if not m:
+            return s
+        s = s[m.end():].strip()
+
+
+def build_city_prefix(cities: List[str]) -> str:
+    """标题城市前缀：1 个→【广州】；2~3 个→【上海、广州】；>3 个→【多地】。"""
+    cs = [c for c in (cities or []) if c]
+    if not cs:
+        return ""
+    if len(cs) > 3:
+        return "【多地】"
+    return "【" + "、".join(cs) + "】"
+
+
+def build_title(text: str, cities: List[str]) -> str:
+    """标题 = 【城市】+ 主题（主题行剥离原文自带的【…】后再拼，上限 80）。"""
+    raw = (text or "").strip()
+    core = ""
+    if raw:
+        core = strip_bracket_prefix(raw.split("\n", 1)[0].strip())
+    title = f"{build_city_prefix(cities)}{core}".strip()
+    return title[:80] + "…" if len(title) > 80 else title
+
+
+_SUBTITLE_NOISE = re.compile(r"[\d\.]|https?://|@|#|地址|地点|时间|营业|开业|店|号|路|街|"
+                             r"广场|商场|中心|预约|期间|每日")
+_SUBTITLE_EMOJI = "✅🌟📍⏰🎁🔥✨🎉📌👉🕐📅🎊⚡️⭐️"
+
+
+def extract_subtitle(text: str, title_line: str = "") -> str:
+    """副标题 = 标题行之后的第一个「短句」，如「荒野心旅，自在驰骋」。
+
+    判定：≤30 字符、不含数字/链接/@/#/地址时间类词、不是 emoji 符号行、不是【…】标签行。
+    """
+    lines = [(l or "").strip() for l in (text or "").split("\n")]
+    lines = [l for l in lines if l]
+    # 只看紧跟标题的那一行的下一行：副标题几乎总是紧挨标题，
+    # 再往下就是地址/档期/细则，不该被误当成副标题。
+    for l in lines[1:2]:
+        if not l or l == (title_line or "").strip():
+            continue
+        if len(l) > 30 or _SUBTITLE_NOISE.search(l) or l[0] in _SUBTITLE_EMOJI:
+            continue
+        if strip_bracket_prefix(l) != l:
+            continue
+        return l
+    return ""
+
+
+def extract_description(text: str, title_line: str = "", subtitle: str = "") -> str:
+    """详情 = 正文去掉标题行与副标题行后的部分（保留 ✅/🌟 这类活动细则段落）。"""
+    lines = [(l or "").strip() for l in (text or "").split("\n")]
+    body, dropped_title = [], False
+    for l in lines:
+        if not l:
+            continue
+        if not dropped_title and l == (title_line or "").strip():
+            dropped_title = True
+            continue
+        if subtitle and l == subtitle:
+            continue
+        body.append(l)
+    return "\n".join(body).strip()
+
+
+# 「城市 + 各自档期」拆分用：支持 9月20日-10月7日 / 9.20-10.7 / 9/20-10/7 / 9月20日-25日
+_RANGE_PATS = [
+    r"(\d{1,2})月(\d{1,2})日\s*[~\-—–至到]+\s*(\d{1,2})月(\d{1,2})日",
+    r"(\d{1,2})月(\d{1,2})日\s*[~\-—–至到]+\s*(\d{1,2})日",
+    r"(\d{1,2})\.(\d{1,2})\s*[~\-—–至到]+\s*(\d{1,2})\.(\d{1,2})",
+    r"(\d{1,2})/(\d{1,2})\s*[~\-—–至到]+\s*(\d{1,2})/(\d{1,2})",
+]
+
+
+def _parse_range(seg: str, year: int):
+    """在一段文字里找第一个日期区间，返回 (start, end) 或 None。"""
+    for p in _RANGE_PATS:
+        m = re.search(p, seg or "")
+        if not m:
+            continue
+        g = m.groups()
+        try:
+            if len(g) == 4:
+                sm, sd, em, ed = (int(x) for x in g)
+            else:
+                sm, sd, ed = (int(x) for x in g)
+                em = sm
+            start = datetime(year, sm, sd)
+            end = datetime(year, em, ed)
+            if end < start:
+                end = datetime(year + 1, em, ed)
+            return start, end
+        except ValueError:
+            continue
+    return None
+
+
+def extract_city_schedules(text: str, cities: List[str], year: int = None):
+    """[(city, start, end, line), …]：每个城市各自的档期 + 命中的那一行原文。
+
+    用于「一篇微博里多个城市档期不同 → 拆成多条」。line 用来就地取该城市的地址。
+    注意城市名常常先出现在标题的【上海、广州】里，那里的档期不属于任何城市，
+    所以要按行找，且只在「下一行没提到别的城市」时才允许日期写在下一行。
+    """
+    year = year or datetime.now().year
+    lines = (text or "").split("\n")
+    out = []
+    for c in cities or []:
+        for i, line in enumerate(lines):
+            if c not in line:
+                continue
+            rng, used = _parse_range(line.split(c, 1)[1], year), line
+            if not rng and i + 1 < len(lines):
+                nxt = lines[i + 1]
+                # 下一行若提到别的城市，说明那是别家的档期，不能借来用
+                if not any(o != c and o in nxt for o in (cities or [])):
+                    rng, used = _parse_range(nxt, year), nxt
+            if rng:
+                out.append((c, rng[0], rng[1], used))
+                break
+    return out
 
 
 def extract_date_range(text: str, year: Optional[int] = None) -> Tuple[Optional[datetime], Optional[datetime]]:
@@ -704,10 +842,15 @@ class WeiboCrawler(BaseCrawler):
 
     # ── 解析单条 ──
     def _parse_mblog(self, mb: dict, matched: List[str], text: str,
-                     account_mode: bool = False) -> Optional[dict]:
+                     account_mode: bool = False) -> List[dict]:
+        """解析一条微博 → 1 条或多条草稿。
+
+        一条微博里不同城市档期不同（如「上海 9.20-10.7 / 广州 10.1-10.20」）时，
+        按城市拆成多条，各自带自己的城市与档期（v1.4.24）。
+        """
         bid = mb.get("bid") or mb.get("id")
         if not bid:
-            return None
+            return []
         user = mb.get("user") or {}
         uid = str(user.get("id") or user.get("idstr") or "")
         source_url = f"https://weibo.com/{uid}/{bid}" if uid else f"https://m.weibo.cn/detail/{bid}"
@@ -716,10 +859,14 @@ class WeiboCrawler(BaseCrawler):
         if mb.get("isLongText"):
             raw_text = self._fetch_long_text(mb.get("id"), text)
 
-        title = extract_title(raw_text)
-        start, end = extract_date_range(raw_text)
+        first_line = (raw_text or "").split("\n", 1)[0].strip()
         cities = extract_cities(raw_text)
         addresses = extract_addresses(raw_text)
+        # 副标题：标题行之后的短句（如「荒野心旅，自在驰骋」）
+        subtitle = extract_subtitle(raw_text, first_line)
+        # 详情：正文去掉标题行/副标题行（保留 ✅🌟 活动细则）
+        description = extract_description(raw_text, first_line, subtitle)
+        start, end = extract_date_range(raw_text)
 
         pics = mb.get("pics") or []
         img_urls = []
@@ -730,39 +877,62 @@ class WeiboCrawler(BaseCrawler):
         cover = img_urls[0] if img_urls else ""
 
         organizer = user.get("screen_name", "")
-        # 标签只放作品名（IP），如「初音未来」；不再塞「快闪」「二次元」等通用词和厂商名
-        tags = derive_ip_tags(title, organizer, matched)
-        meta = {
-            "source_images": img_urls,       # 新浪图床直链，仅供参考，人工后续转存图床
-            "raw_text": raw_text,
-            "matched_keywords": matched,
-            "needs_time": start is None,     # 时间仅在海报图 → 需人工补全
-            "needs_address": len(addresses) == 0,
-            "images_need_upload": True,      # 图片由人工上传图床
-        }
-        cities_json = json.dumps(
-            [{"city": c, "district": "", "address": ""} for c in cities],
-            ensure_ascii=False,
-        )
+        # 标签只放作品名（IP）；传「去括号后的主题」避免原标题里的【…】干扰命中
+        tags = derive_ip_tags(strip_bracket_prefix(first_line), organizer, matched)
 
-        return {
-            "title": title,
-            "subtitle": "",
-            "description": raw_text,
-            "cover_image": cover,
-            "images": json.dumps(img_urls, ensure_ascii=False),
-            "cities": cities_json,
-            "city": cities[0] if cities else "",
-            "district": "",
-            "address": addresses[0] if addresses else "",
-            "start_date": start,
-            "end_date": end,
-            "organizer": organizer,
-            "reservation": "no",
-            "tags": json.dumps(tags, ensure_ascii=False),
-            "source_url": source_url,
-            "crawl_meta": json.dumps(meta, ensure_ascii=False),
-        }
+        # 多城市 + 各自档期不同 → 拆成多条
+        schedules = extract_city_schedules(raw_text, cities)
+        distinct = {(s, e) for _, s, e, _l in schedules}
+        multi = len(schedules) >= 2 and len(distinct) >= 2
+
+        def _pack(city_list, s, e, address, desc=None):
+            meta = {
+                "source_images": img_urls,       # 新浪图床直链，仅供参考，人工后续转存图床
+                "raw_text": raw_text,
+                "matched_keywords": matched,
+                "needs_time": s is None,         # 时间仅在海报图 → 需人工补全
+                "needs_address": not address,
+                "images_need_upload": True,      # 图片由人工上传图床
+                "split_by_city": len(city_list) == 1 and multi,  # 由多城市拆分而来
+            }
+            return {
+                "title": build_title(raw_text, city_list),
+                "subtitle": subtitle,
+                "description": description if desc is None else desc,
+                "cover_image": cover,
+                "images": json.dumps(img_urls, ensure_ascii=False),
+                "cities": json.dumps(
+                    [{"city": c, "district": "", "address": address} for c in city_list],
+                    ensure_ascii=False,
+                ),
+                "city": city_list[0] if city_list else "",
+                "district": "",
+                "address": address,
+                "start_date": s,
+                "end_date": e,
+                "organizer": organizer,
+                "reservation": "no",
+                "tags": json.dumps(tags, ensure_ascii=False),
+                "source_url": source_url,
+                "crawl_meta": json.dumps(meta, ensure_ascii=False),
+            }
+
+        if multi:
+            items = []
+            for c, s, e, line in schedules:
+                # 地址就取该城市所在行（各城市地址通常跟在城市名后面）
+                line_addrs = extract_addresses(line) if line else []
+                # 详情里去掉属于其它城市的行，避免每家都堆着别家的档期
+                own_desc = "\n".join(
+                    l for l in description.splitlines()
+                    if not any(o != c and o in l for o in cities)
+                ).strip()
+                items.append(_pack([c], s, e,
+                                   line_addrs[0] if line_addrs else "",
+                                   own_desc or description))
+            return items
+
+        return [_pack(cities, start, end, addresses[0] if addresses else "")]
 
     # ── 运行态（断点续爬）──
     def _get_state(self):
@@ -838,9 +1008,10 @@ class WeiboCrawler(BaseCrawler):
                         hits = self._collect_posts(label, since, until)
                     hit_stats.append(f"{label}×{len(hits)}")
                     for mb, matched, text, account_mode in hits:
-                        item = self._parse_mblog(mb, matched, text, account_mode=account_mode)
-                        if item:
-                            items_all.append(item)
+                        # 一条微博可能拆成多条（多城市不同档期）
+                        for item in self._parse_mblog(mb, matched, text, account_mode=account_mode):
+                            if item:
+                                items_all.append(item)
                 except Exception as e:
                     errors.append(f"[{label}] {e}")
                     logger.error("[weibo] %s 失败: %s", label, e)
@@ -911,12 +1082,14 @@ class WeiboCrawler(BaseCrawler):
                 "可调大 weibo_crawler.py 顶部的 KEYWORD_INTERVAL（如 120）降低请求密度。"
             )
 
-        # 运行内去重
+        # 运行内去重：同一微博可能拆出多条（不同城市/档期），去重键带上城市，
+        # 否则第二条会被误判成同一条而被丢掉。
         seen, uniq = set(), []
         for it in items_all:
-            if it["source_url"] in seen:
+            key = f"{it['source_url']}#{it.get('city') or ''}"
+            if key in seen:
                 continue
-            seen.add(it["source_url"])
+            seen.add(key)
             uniq.append(it)
 
         new_added = 0

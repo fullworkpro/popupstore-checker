@@ -163,6 +163,8 @@
           <el-select v-model="form.source" style="width:150px">
             <el-option label="手动" value="manual" />
             <el-option label="爬虫" value="crawler" />
+            <el-option label="策展导入" value="curated" />
+            <el-option label="微博" value="weibo" />
           </el-select>
         </el-form-item>
 

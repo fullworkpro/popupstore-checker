@@ -38,6 +38,9 @@ QRCODE = os.path.join(ASSETS, "xcx-qrcode.png")
 CRED = os.path.join(DATA_DIR, ".wechat_mp")
 UPLOAD_LIMIT_MB = 10
 
+# 是否生成「店铺专属码」（scene 带店铺参数）。默认 0：统一用同一张通用码只到首页。
+MP_STORE_QRCODE = (os.environ.get("MP_STORE_QRCODE", "0") or "0") not in ("0", "false", "False")
+
 
 CRED_KEYS = ("WECHAT_APPID", "WECHAT_APPSECRET", "WXAPP_APPID", "WXAPP_APPSECRET")
 
@@ -142,8 +145,14 @@ def store_wxacode(store_id):
 
 
 def qrcode_bytes_for(store_id=None):
-    """优先店铺专属码，失败降级静态通用码。返回 (bytes, ext, is_store_code) 或 None"""
-    if store_id:
+    """小程序码：默认固定用同一张通用码（只到首页，稳定且省一次接口调用）。
+
+    v1.4.24 起不再默认生成「店铺专属码」——详情页入口已由文首文字链接承担
+    （点击直达该店，比扫码更可靠），码图只需承担「扫码进小程序」这一个作用。
+    若要恢复专属码：环境变量 MP_STORE_QRCODE=1（或写进 data/.wechat_mp）。
+    返回 (bytes, ext, is_store_code) 或 None。
+    """
+    if MP_STORE_QRCODE and store_id:
         got = store_wxacode(store_id)
         if got:
             return got[0], got[1], True
@@ -311,22 +320,6 @@ def cta_section(qrcode_src, store_code=False, store_id=None):
     name_link = weapp_text_link_html(MINI_HOME_PATH) or html.escape(MP_NAME)
     headline = f"随时随地查快闪 · 就在「{name_link}」小程序"
     hint = f"长按识别小程序码<br/>{html.escape(MP_SLOGAN)}"
-    card = mini_card_html(
-        f"pages/detail/detail?id={store_id}" if store_id else "", "查看本店详情"
-    )
-    # 文字链接（微信编辑器同款 <a>）：v1.4.22 实测 draft/add 接受且属性不被清洗，
-    # 是本店详情唯一可程序化生成的可点入口（Short Link / 卡片标签都受限于个人主体）。
-    detail_link = (
-        weapp_text_link_html(f"pages/detail/detail?id={store_id}", "查看本店详情")
-        if store_id
-        else ""
-    )
-    detail_p = (
-        f'<p style="margin:14px 0 0;font-size:14px;color:{ACCENT_DEEP};line-height:1.8;">'
-        f"在小程序里查看本店详情：{detail_link}</p>"
-        if detail_link
-        else ""
-    )
     return (
         f'<section style="margin:26px 0 0;padding:20px 16px 22px;background:{ACCENT_SOFT};'
         f'border:1px solid {ACCENT_LINE};border-radius:10px;text-align:center;">'
@@ -335,14 +328,13 @@ def cta_section(qrcode_src, store_code=False, store_id=None):
         f"{qr}"
         f'<p style="margin:12px 0 0;font-size:13px;color:{MUTED};line-height:1.8;">'
         f"{hint}</p>"
-        f"{detail_p}"
-        f"{card}</section>"
+        f"</section>"
     )
 
 
 def render_single(store, image_urls, qrcode_src=None, store_code=False):
     body = (
-        home_link_html()
+        home_link_html(store.get("id"))
         + info_section(store)
         + gallery_section(image_urls)
         + cta_section(qrcode_src, store_code, store.get("id"))

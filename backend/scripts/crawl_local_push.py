@@ -154,9 +154,10 @@ def collect(crawler, accounts, keywords, since, until, interval, kw_on):
         try:
             hits = crawler._collect_account_posts(acc, since, until)
             for mb, matched, text, account_mode in hits:
-                it = crawler._parse_mblog(mb, matched, text, account_mode=account_mode)
-                if it:
-                    items.append(it)
+                # 一条微博可能拆成多条（多城市不同档期）
+                for it in crawler._parse_mblog(mb, matched, text, account_mode=account_mode):
+                    if it:
+                        items.append(it)
             log(f"  账号 {name}: 命中 {len(hits)} 条")
         except Exception as e:
             errors.append(f"[{name}] {e}")
@@ -168,9 +169,9 @@ def collect(crawler, accounts, keywords, since, until, interval, kw_on):
             try:
                 hits = crawler._collect_posts(kw, since, until)
                 for mb, matched, text, account_mode in hits:
-                    it = crawler._parse_mblog(mb, matched, text, account_mode=account_mode)
-                    if it:
-                        items.append(it)
+                    for it in crawler._parse_mblog(mb, matched, text, account_mode=account_mode):
+                        if it:
+                            items.append(it)
                 log(f"  关键词 {kw}: 命中 {len(hits)} 条")
             except Exception as e:
                 errors.append(f"[{kw}] {e}")

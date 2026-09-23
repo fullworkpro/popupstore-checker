@@ -423,7 +423,8 @@ const handleDelete = async (id) => {
 const typeLabel = (row) => row.store_type_label || typeMap[row.store_type] || '联名快闪'
 const sourceLabel = (s) => ({
   manual: '手动', crawler: '爬虫', wechat: '微信', xiaohongshu: '小红书', weibo: '微博',
-  curated: '策展导入',
+  // 历史脏数据里出现过拼写颠倒的 curated，一并归一显示，避免列表露出英文原值
+  curated: '策展导入', cruated: '策展导入',
 }[s] || s)
 const statusType = (s) => ({
   published: 'success', draft: 'warning', archived: 'info', rejected: 'danger',

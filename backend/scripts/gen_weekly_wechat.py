@@ -52,7 +52,7 @@ def _read_cred() -> dict:
 _CRED = _read_cred()
 
 MP_NAME = os.environ.get("MP_NAME", "wing的附近溜达本")
-MP_SLOGAN = os.environ.get("MP_SLOGAN", "附近的联名快闪 / 特展 / 联名餐厅，随手一查")
+MP_SLOGAN = os.environ.get("MP_SLOGAN", "附近的联名快闪 / 特展 / 联名餐厅，随手可查")
 # 小程序首页链接：手机上打开小程序首页 → 右上角「…」→ 复制页面链接，形如 #小程序://名称/短码
 # 优先级：环境变量 > 凭据文件 .wechat_mp 的 MP_HOME_LINK > 默认值
 # 注意：Short Link 服务端接口（wxa/genwxashortlink）个人主体无权限（实测 43104），
@@ -237,12 +237,35 @@ def address_block_html(label, addrs, color="#555"):
     return (f'<p style="margin:4px 0 0;font-size:14px;color:{color};">{label}</p>{rows}')
 
 
-def home_link_html():
-    """文首引流条（浅紫底 + 紫色左边框）：小程序名即为可点文字链接，直达小程序首页。
+def home_link_html(store_id=None):
+    """文首引流条（浅紫底 + 紫色左边框）。
 
-    优先用微信编辑器同款的 <a class="weapp_text_link">（v1.4.22），
-    未配置小程序 appid 时退回 #小程序:// 纯文本。
+    单篇（传 store_id）：「在小程序里查看快闪详情：查看快闪详情」——
+        「查看快闪详情」是微信文字链接，点击直达该店详情页（v1.4.24）。
+    周报（不传 store_id）：「更多快闪内容可见小程序☞「名称」」——跳首页。
+
+    未配置小程序 appid 时退回 #小程序:// 纯文本 / 纯文字。
     """
+    if store_id:
+        link = weapp_text_link_html(
+            f"pages/detail/detail?id={store_id}", "查看快闪详情"
+        )
+        if link:
+            text = (
+                f'<p style="margin:0;font-size:14px;line-height:1.75;color:{ACCENT_DEEP};">'
+                f"在小程序里查看快闪详情：{link}</p>"
+            )
+        else:
+            text = (
+                f'<p style="margin:0;font-size:14px;line-height:1.75;color:{ACCENT_DEEP};">'
+                f"在小程序里查看快闪详情：查看快闪详情</p>"
+            )
+        return (
+            f'<section style="margin:0 0 16px;padding:10px 12px;background:{ACCENT_SOFT};'
+            f'border-left:3px solid {ACCENT};border-radius:6px;">'
+            f"{text}</section>"
+        )
+
     link = weapp_text_link_html(MINI_HOME_PATH)
     if link:
         text = (

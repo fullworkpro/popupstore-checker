@@ -24,17 +24,24 @@ class BaseCrawler(ABC):
         ...
 
     def save_items(self, items: List[Dict]) -> int:
-        """去重入库：相同 source_url 视为已存在，跳过。返回新增条数。
+        """去重入库：相同 source_url（+ 城市）视为已存在，跳过。返回新增条数。
 
         子类（如 WeiboCrawler）解析完成后调用此方法落库。
+        同一条微博可能拆出多个城市的多条（v1.4.24），故去重键要带上城市；
+        同时对「同链接同标题」做一次兜底判断，避免老数据（单条）被重复入库。
         """
         new_count = 0
         for item in items:
             url = (item.get("source_url") or "").strip()
+            exists = None
             if url:
-                exists = self.db.query(Store).filter(Store.source_url == url).first()
-            else:
-                exists = None
+                q = self.db.query(Store).filter(Store.source_url == url)
+                city = (item.get("city") or "").strip()
+                if city:
+                    exists = (q.filter(Store.city == city).first()
+                              or q.filter(Store.title == (item.get("title") or "")).first())
+                else:
+                    exists = q.first()
             if exists:
                 continue
             store = Store(

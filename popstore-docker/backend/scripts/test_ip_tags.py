@@ -56,9 +56,18 @@ print("— 4) 多命中只取 2 个 —")
 r = derive_ip_tags("原神 x 崩坏星穹铁道 联动快闪", "谷谷逛谷")
 check("多 IP 截断为 2", len(r) <= 2 and "原神" in r, True)
 
-print("— 5) 无命中 → 清洗后的账号名 —")
-check("TOPTOY 官方", derive_ip_tags("SISI 新品", "TOPTOY官方"), ["TOPTOY"])
-check("带地区后缀", derive_ip_tags("新品", "XX品牌旗舰店丨上海"), ["XX品牌"])
+print("— 5) 无 IP 命中 → 用配置里的关键词（关键词本身即 IP 名），不再用账号名 —")
+# v1.4.24：账号名是厂商/店名（如「XX主题餐厅」），不是 IP，不能当标签
+check("TOPTOY 官方（无关键词）", derive_ip_tags("SISI 新品", "TOPTOY官方"), [])
+check("带地区后缀（无关键词）", derive_ip_tags("新品", "XX品牌旗舰店丨上海"), [])
+check("退回关键词 JOJO", derive_ip_tags("主题餐厅开业", "XX主题餐厅", ["JOJO的奇妙冒险"]),
+      ["JOJO的奇妙冒险"])
+check("关键词优先于账号名", derive_ip_tags("快闪", "XX主题餐厅", ["银魂"]), ["银魂"])
+
+print("— 5b) 新增 IP 词典条目 —")
+check("JOJO 标题命中", derive_ip_tags("JOJO的奇妙冒险 快闪", "XX店"), ["JOJO的奇妙冒险"])
+check("银魂 标题命中", derive_ip_tags("银魂DISCO主题快闪", "XX店"), ["银魂"])
+check("犬夜叉 标题命中", derive_ip_tags("犬夜叉三十周年快闪", "XX店"), ["犬夜叉"])
 
 print("— 6) 全空 → 空列表 —")
 check("无标题无账号", derive_ip_tags("", ""), [])
