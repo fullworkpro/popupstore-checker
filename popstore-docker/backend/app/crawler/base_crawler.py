@@ -32,43 +32,61 @@ class BaseCrawler(ABC):
         """
         new_count = 0
         for item in items:
-            url = (item.get("source_url") or "").strip()
-            exists = None
-            if url:
-                q = self.db.query(Store).filter(Store.source_url == url)
-                city = (item.get("city") or "").strip()
-                if city:
-                    exists = (q.filter(Store.city == city).first()
-                              or q.filter(Store.title == (item.get("title") or "")).first())
-                else:
-                    exists = q.first()
-            if exists:
-                continue
-            store = Store(
-                title=item.get("title", "无标题")[:200],
-                subtitle=item.get("subtitle", "") or "",
-                description=item.get("description", ""),
-                cover_image=item.get("cover_image", "") or "",
-                images=item.get("images", "[]"),
-                cities=item.get("cities", "[]"),
-                city=item.get("city", "") or "",
-                district=item.get("district", "") or "",
-                address=item.get("address", "") or "",
-                start_date=item.get("start_date"),
-                end_date=item.get("end_date"),
-                organizer=item.get("organizer", "") or "",
-                reservation=item.get("reservation", "no") or "no",
-                tags=item.get("tags", "[]"),
-                source=self.source,
-                source_url=url,
-                status=StoreStatus.DRAFT.value,
-                crawl_meta=item.get("crawl_meta", "{}") or "{}",
-            )
-            self.db.add(store)
-            new_count += 1
+            # 单条容错：一条脏数据（超长字段/异常类型）不该让整批入库失败
+            try:
+                if self._save_one(item):
+                    new_count += 1
+            except Exception as e:  # noqa: BLE001
+                logger.error("[%s] 单条入库失败，跳过: %s｜title=%s",
+                             self.source, e, (item.get("title") or "")[:40])
         if new_count:
-            self.db.commit()
+            self._commit()
         return new_count
+
+    def _save_one(self, item: Dict) -> bool:
+        """入库单条（已存在返回 False）。供 save_items 逐条调用以便隔离异常。"""
+        url = (item.get("source_url") or "").strip()
+        exists = None
+        if url:
+            q = self.db.query(Store).filter(Store.source_url == url)
+            city = (item.get("city") or "").strip()
+            if city:
+                exists = (q.filter(Store.city == city).first()
+                          or q.filter(Store.title == (item.get("title") or "")).first())
+            else:
+                exists = q.first()
+        if exists:
+            return False
+        self.db.add(Store(
+            title=item.get("title", "无标题")[:200],
+            subtitle=item.get("subtitle", "") or "",
+            description=item.get("description", ""),
+            cover_image=item.get("cover_image", "") or "",
+            images=item.get("images", "[]"),
+            cities=item.get("cities", "[]"),
+            city=item.get("city", "") or "",
+            district=item.get("district", "") or "",
+            address=item.get("address", "") or "",
+            start_date=item.get("start_date"),
+            end_date=item.get("end_date"),
+            organizer=item.get("organizer", "") or "",
+            reservation=item.get("reservation", "no") or "no",
+            tags=item.get("tags", "[]"),
+            source=self.source,
+            source_url=url,
+            status=StoreStatus.DRAFT.value,
+            crawl_meta=item.get("crawl_meta", "{}") or "{}",
+        ))
+        return True
+
+    def _commit(self) -> None:
+        """提交事务；失败时回滚，避免 session 处于不可用状态拖垮后续调用。"""
+        try:
+            self.db.commit()
+        except Exception as e:  # noqa: BLE001
+            self.db.rollback()
+            logger.error("[%s] 提交事务失败，已回滚: %s", self.source, e)
+            raise
 
     def run(self, keywords: List[str]) -> CrawlLog:
         """执行爬取（关键词模式）+ 去重入库"""

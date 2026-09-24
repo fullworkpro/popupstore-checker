@@ -1,4 +1,6 @@
-"""清理历史噪音草稿（发货/抽选/中奖类运营通知）。
+"""清理历史噪音草稿（运营通知类 + 纯周边上新/线上售卖类）。
+
+判定逻辑直接复用爬虫的 `popup_reject_reason()`，保证与抓取时口径一致。
 
 用法：
     python scripts/clean_noise_drafts.py            # 只列出命中噪音的草稿
@@ -16,14 +18,13 @@ import sys
 import urllib.error
 import urllib.request
 
-BASE = os.environ.get("POPSTORE_API", "http://192.168.50.147:9114/api/v1")
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, BACKEND_ROOT)
 
-NOISE_PATTERNS = (
-    "发货", "补款", "退款", "退货", "换货", "物流", "运单", "快递", "到货", "出库", "签收",
-    "抽选", "抽签", "中签", "中奖", "开奖", "获奖名单", "名单公布",
-    "购买资格", "预约资格", "停售", "售罄公告", "延期发货", "补货通知",
-)
+from app.crawler.weibo_crawler import popup_reject_reason  # noqa: E402
+
+BASE = os.environ.get("POPSTORE_API", "http://192.168.50.147:9114/api/v1")
+DATA_DIR = os.path.join(BACKEND_ROOT, "data")
 
 
 def _req(method: str, path: str, token: str | None = None, body: dict | None = None) -> dict:
@@ -80,16 +81,18 @@ def main() -> None:
         title = (s.get("title") or "").strip()
         desc = (s.get("description") or "")[:200]
         text = title + " " + desc
-        matched = [p for p in NOISE_PATTERNS if p in text]
+        # 解析后的字段不一定还带「快闪」二字（标题已改为【城市】起头），
+        # 只在这种情况下做噪音判定，避免把正常草稿误判删除。
+        reason = popup_reject_reason(text) if "快闪" in text else None
         if args.all_drafts:
-            flag = "NOISE" if matched else "     "
-            print(f"  {flag} #{s.get('id')} [{s.get('source')}] {title}  {matched}")
-        if matched:
-            hits.append((s, matched))
+            flag = "NOISE" if reason else "     "
+            print(f"  {flag} #{s.get('id')} [{s.get('source')}] {title}  {reason or ''}")
+        if reason:
+            hits.append((s, reason))
 
     print(f"\n[命中噪音] {len(hits)} 条")
-    for s, matched in hits:
-        print(f"  #{s.get('id')} [{s.get('source')}] {s.get('title')}  <- {matched}")
+    for s, reason in hits:
+        print(f"  #{s.get('id')} [{s.get('source')}] {s.get('title')}  <- {reason}")
 
     if not hits:
         return

@@ -477,12 +477,37 @@ NOISE_PATTERNS = (
     "停售", "售罄公告", "延期发货", "补货通知",
 )
 
+# 「周边上新 / 线上售卖」类文案词：命中时**并不直接排除**——
+# 只要正文里同时有线下活动信号（门店、地址、开业、档期…）就仍是真快闪。
+# 典型要排除的：品牌发「XX 快闪 周边上新 / 今晚开售 / 通贩开启」，没有可去的点位。
+SALES_PATTERNS = (
+    "上新", "开售", "发售", "预售", "通贩", "现货", "抢购", "补货", "限量发售",
+    "线上发售", "全网首发", "购买链接", "拍下", "下单", "邮费", "包邮",
+)
+
+# 线下活动信号：命中任一即说明有实际可去的点位 / 档期
+OFFLINE_SIGNALS = (
+    "快闪店", "快闪空间", "主题店", "限定店", "门店", "店铺", "店址", "地址", "地点", "坐标",
+    "商场", "购物中心", "开展", "开幕", "开业", "营业", "现场", "打卡", "展区", "展览", "展会",
+)
+
+
+def popup_reject_reason(text: str) -> Optional[str]:
+    """返回排除原因（None = 通过），便于日志诊断与回归测试。"""
+    if "快闪" not in text:
+        return "不含「快闪」"
+    for p in NOISE_PATTERNS:
+        if p in text:
+            return f"运营通知类噪音「{p}」"
+    sales = [p for p in SALES_PATTERNS if p in text]
+    if sales and not any(s in text for s in OFFLINE_SIGNALS):
+        return f"疑似周边上新/线上售卖（{sales[0]}），无线下活动信息"
+    return None
+
 
 def is_popup_post(text: str) -> bool:
-    """是否【活动类】快闪帖：正文含「快闪」且不含发货/抽选/中奖等噪音词。"""
-    if "快闪" not in text:
-        return False
-    return not any(p in text for p in NOISE_PATTERNS)
+    """是否【活动类】快闪帖：含「快闪」且不是运营通知、也不是纯周边上新。"""
+    return popup_reject_reason(text) is None
 
 
 def is_anime_post(text: str, keywords: List[str]) -> Tuple[bool, List[str]]:
@@ -968,8 +993,20 @@ class WeiboCrawler(BaseCrawler):
             since = floor
         until = now
 
+        items_all: List[dict] = []
+        errors: List[str] = []
+        hit_stats: List[str] = []  # 每个目标命中条数，用于日志诊断
+        seen: set = set()          # 运行内去重键（含城市）
+        pending: List[dict] = []   # 已抓到但尚未落库的条目
+        added = 0
+
         # 凭证选择（v1.4.9）：后台填写的登录态 Cookie 优先，未填时才自动领访客 SUB。
-        self._ensure_visitor_sub()
+        # 领凭证失败不再整轮中止——可能手填 Cookie 仍可用，也可能后面只是零命中。
+        try:
+            self._ensure_visitor_sub()
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"[credential] {e}")
+            logger.error("[weibo] 凭证准备失败，继续尝试抓取: %s", e)
 
         # 模式选择（v1.3.1：两种模式各自独立开关，可同时启用）：
         #   ① 账号监控(UID)  —— 优先级最高，先跑；其命中在去重时先入为主。
@@ -993,12 +1030,40 @@ class WeiboCrawler(BaseCrawler):
         logger.info("[weibo] 模式: %s｜窗口 since=%s until=%s 每账号/词页数=%d",
                     mode_desc, since, until, self.max_pages)
 
-        items_all: List[dict] = []
-        errors: List[str] = []
-        hit_stats: List[str] = []  # 每个目标命中条数，用于日志诊断
+        def _drain() -> int:
+            """把 pending 里的条目落库（增量保存）。
+
+            每跑完一个目标就调用一次：后续目标报错/中断时，前面抓到的内容已经在草稿里了。
+            整批入库失败时逐条重试，避免一条脏数据拖垮整批。
+            """
+            if not pending:
+                return 0
+            batch: List[dict] = []
+            for it in pending:
+                key = f"{it.get('source_url') or ''}#{it.get('city') or ''}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                batch.append(it)
+            pending.clear()
+            if not batch:
+                return 0
+            try:
+                return self.save_items(batch)
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"[save] {e}")
+                logger.error("[weibo] 整批入库失败，改为逐条重试: %s", e)
+                n = 0
+                for it in batch:
+                    try:
+                        n += self.save_items([it])
+                    except Exception as e2:  # noqa: BLE001
+                        errors.append(f"[save:item] {str(e2)[:80]}")
+                return n
 
         def _run_targets(targets, is_account: bool) -> None:
             """顺序抓取一组目标；单个目标失败不影响其余（错误汇总进 errors）。"""
+            nonlocal added
             for t in targets:
                 label = t.get("name") or t.get("uid") or "?"
                 try:
@@ -1008,22 +1073,37 @@ class WeiboCrawler(BaseCrawler):
                         hits = self._collect_posts(label, since, until)
                     hit_stats.append(f"{label}×{len(hits)}")
                     for mb, matched, text, account_mode in hits:
-                        # 一条微博可能拆成多条（多城市不同档期）
-                        for item in self._parse_mblog(mb, matched, text, account_mode=account_mode):
-                            if item:
-                                items_all.append(item)
-                except Exception as e:
+                        try:
+                            # 一条微博可能拆成多条（多城市不同档期）
+                            for item in self._parse_mblog(mb, matched, text, account_mode=account_mode):
+                                if item:
+                                    items_all.append(item)
+                                    pending.append(item)
+                        except Exception as e:  # noqa: BLE001
+                            # 单条解析异常不该让整个目标前功尽弃
+                            errors.append(f"[{label}:parse] {str(e)[:80]}")
+                            logger.error("[weibo] %s 解析单条失败: %s", label, e)
+                except Exception as e:  # noqa: BLE001
                     errors.append(f"[{label}] {e}")
                     logger.error("[weibo] %s 失败: %s", label, e)
+                # 该目标的内容先落库，再继续下一个（即便后面失败也不丢）
+                added += _drain()
                 # 目标之间留大间隔（默认 60s），这是规避微博限流的关键
                 time.sleep(self.keyword_interval)
 
         # ① UID 账号监控（优先）
-        if do_accounts:
-            _run_targets(accounts, True)
         # ② 全站关键词搜索（补充，排在 UID 之后）
-        if do_keywords:
-            _run_targets([{"name": kw, "uid": ""} for kw in self.keywords], False)
+        # 整段包 try：任何一个目标/环节抛出未预期异常，前面已抓到的内容仍会在 finally 里落库。
+        try:
+            if do_accounts:
+                _run_targets(accounts, True)
+            if do_keywords:
+                _run_targets([{"name": kw, "uid": ""} for kw in self.keywords], False)
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"[fatal] {e}")
+            logger.exception("[weibo] 抓取流程异常中断，已抓到的部分仍会入库: %s", e)
+        finally:
+            added += _drain()
 
         # ok=-100 诊断：区分「访客 SUB 也未生效（出口 IP 被 WAF 拦）/ 已用访客 SUB 仍被限流」
         if any("ok!=-100" in e for e in errors):
@@ -1082,23 +1162,8 @@ class WeiboCrawler(BaseCrawler):
                 "可调大 weibo_crawler.py 顶部的 KEYWORD_INTERVAL（如 120）降低请求密度。"
             )
 
-        # 运行内去重：同一微博可能拆出多条（不同城市/档期），去重键带上城市，
-        # 否则第二条会被误判成同一条而被丢掉。
-        seen, uniq = set(), []
-        for it in items_all:
-            key = f"{it['source_url']}#{it.get('city') or ''}"
-            if key in seen:
-                continue
-            seen.add(key)
-            uniq.append(it)
-
-        new_added = 0
-        try:
-            new_added = self.save_items(uniq)
-        except Exception as e:
-            errors.append(f"[save] {e}")
-            logger.error("[weibo] 入库失败: %s", e)
-
+        # 水位线策略：只要本轮有错误就不推进 last_success_at，
+        # 否则「跑到一半失败」会把没跑到的目标永久跳过；已入库的内容靠去重键自动跳过，不会重复。
         self._update_state(success=not errors, error="\n".join(errors)[:500])
 
         # 日志记录本次实际跑过的目标（UID 账号名在前、关键词补充在后），便于回溯
@@ -1111,20 +1176,28 @@ class WeiboCrawler(BaseCrawler):
         # 诊断摘要写进日志，便于在后台页面直接判断「没抓到」属于哪种情况
         hits_txt = "、".join(s for s in hit_stats if not s.endswith("×0")) or "全部目标 0 命中"
         diag = (f"[诊断] 窗口 {since:%m-%d %H:%M} ~ {until:%m-%d %H:%M}"
-                f"（回看 {self.lookback_days} 天）｜{len(hit_stats)} 个目标｜命中：{hits_txt}")
+                f"（回看 {self.lookback_days} 天）｜{len(hit_stats)} 个目标｜命中：{hits_txt}"
+                f"｜入库 {added} 条")
         _err_txt = "\n".join(errors)
         error_detail = f"{diag}\n{_err_txt}" if _err_txt else diag
 
-        log = CrawlLog(
-            source=self.source,
-            keyword=keyword_field[:120],
-            total_found=len(items_all),
-            new_added=new_added,
-            error_count=len(errors),
-            error_detail=error_detail[:2000],
-            status="failed" if errors else "success",
-        )
-        self.db.add(log)
-        self.db.commit()
-        logger.info("[weibo] 完成：发现 %d，新增 %d，错误 %d", len(items_all), new_added, len(errors))
+        # 部分成功（有错但已救回一部分）记为 partial，全没入库才算 failed
+        status = "success" if not errors else ("partial" if added else "failed")
+        try:
+            log = CrawlLog(
+                source=self.source,
+                keyword=keyword_field[:120],
+                total_found=len(items_all),
+                new_added=added,
+                error_count=len(errors),
+                error_detail=error_detail[:2000],
+                status=status,
+            )
+            self.db.add(log)
+            self.db.commit()
+        except Exception as e:  # noqa: BLE001
+            logger.error("[weibo] 写运行日志失败（已入库内容不受影响）: %s", e)
+            log = None
+        logger.info("[weibo] 完成(%s)：发现 %d，新增 %d，错误 %d",
+                    status, len(items_all), added, len(errors))
         return log
