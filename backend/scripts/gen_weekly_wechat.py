@@ -290,7 +290,7 @@ def home_link_html(store_id=None):
 
 
 # 预约方式标签（与 gen_single_wechat / 后台编辑页口径一致）
-RESERVATION_LABELS = {"required": "需要预约", "advance": "前期需预约", "no": "无需预约"}
+RESERVATION_LABELS = {"required": "需预约", "advance": "前期需预约", "no": "无需预约"}
 
 
 def reservation_label(v) -> str:

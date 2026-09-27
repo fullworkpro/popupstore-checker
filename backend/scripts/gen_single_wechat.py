@@ -219,7 +219,7 @@ def collect_images(store, token=None):
 
 
 # 预约方式标签（与后台编辑页口径一致）：required 需要预约 / advance 前期需预约 / no 无需预约
-RESERVATION_LABELS = {"required": "需要预约", "advance": "前期需预约", "no": "无需预约"}
+RESERVATION_LABELS = {"required": "需预约", "advance": "前期需预约", "no": "无需预约"}
 
 
 def reservation_label(v) -> str:
