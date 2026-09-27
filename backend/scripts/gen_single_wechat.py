@@ -218,6 +218,15 @@ def collect_images(store, token=None):
     return out
 
 
+# 预约方式标签（与后台编辑页口径一致）：required 需要预约 / advance 前期需预约 / no 无需预约
+RESERVATION_LABELS = {"required": "需要预约", "advance": "前期需预约", "no": "无需预约"}
+
+
+def reservation_label(v) -> str:
+    """归一化预约方式标签；未知/空值按「无需预约」处理。"""
+    return RESERVATION_LABELS.get((v or "no").strip(), RESERVATION_LABELS["no"])
+
+
 def info_section(store, qrcode_src=None):
     """文字信息卡（正文开头）"""
     sub = html.escape((store.get("subtitle") or "").strip())
@@ -243,8 +252,11 @@ def info_section(store, qrcode_src=None):
     rows = [("日期", period)]
     if store.get("organizer"):
         rows.append(("主办", html.escape(store["organizer"])))
-    if store.get("reservation") == "yes":
-        rows.append(("入场", "需预约，请留意主办方公告"))
+    # 预约方式：三种都写出来，读者一眼知道要不要抢预约（v1.4.26）
+    rsv = reservation_label(store.get("reservation"))
+    if (store.get("reservation") or "no").strip() == "required":
+        rsv += "，请留意主办方公告"
+    rows.append(("预约", rsv))
 
     def _row(k, v):
         return (
@@ -253,7 +265,7 @@ def info_section(store, qrcode_src=None):
             f"{k}</strong>{v}</p>"
         )
 
-    # 顺序：日期 → 地点（可能多行）→ 主办 / 入场
+    # 顺序：日期 → 地点（可能多行）→ 主办 / 预约
     rows_html = _row(*rows[0]) + addr_html + "".join(_row(k, v) for k, v in rows[1:])
     chips = "".join(
         f'<span style="display:inline-block;font-size:12px;color:{ACCENT};border:1px solid {ACCENT};'
@@ -358,6 +370,7 @@ def render_md(store, image_urls, qrcode_src=None):
         lines.append(f"- 地点：{a}")
     if store.get("organizer"):
         lines.append(f"- 主办：{store['organizer']}")
+    lines.append(f"- 预约：{reservation_label(store.get('reservation'))}")
     lines.append("")
     if store.get("description"):
         lines += [store["description"], ""]

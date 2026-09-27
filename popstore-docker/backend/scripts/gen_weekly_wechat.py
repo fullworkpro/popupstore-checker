@@ -289,6 +289,15 @@ def home_link_html(store_id=None):
     )
 
 
+# 预约方式标签（与 gen_single_wechat / 后台编辑页口径一致）
+RESERVATION_LABELS = {"required": "需要预约", "advance": "前期需预约", "no": "无需预约"}
+
+
+def reservation_label(v) -> str:
+    """归一化预约方式标签；未知/空值按「无需预约」处理。"""
+    return RESERVATION_LABELS.get((v or "no").strip(), RESERVATION_LABELS["no"])
+
+
 def card_html(it):
     title = html.escape((it.get("title") or "").strip())
     sub = html.escape((it.get("subtitle") or "").strip())
@@ -323,6 +332,11 @@ def card_html(it):
         if org
         else ""
     )
+    # 预约方式与地点并列展示（v1.4.26）
+    rsv_html = (
+        f'<p style="margin:6px 0 0;font-size:13px;color:{MUTED};">'
+        f"预约：{reservation_label(it.get('reservation'))}</p>"
+    )
     return (
         f'<section style="border-left:4px solid {ACCENT};background:{ACCENT_SOFT};'
         f'padding:12px 14px;margin:14px 0;border-radius:6px;">'
@@ -331,6 +345,7 @@ def card_html(it):
         f'<p style="margin:8px 0 0;font-size:14px;color:#555;">日期：{period}</p>'
         + address_block_html("地点：", addrs)
         + org_html
+        + rsv_html
         + tag_html
         + img_html
         + "</section>"
@@ -384,6 +399,7 @@ def render_md(items, title, lead):
                 lines.append(f"- 地点：{addr}")
             if it.get("organizer"):
                 lines.append(f"- 主办：{it.get('organizer')}")
+            lines.append(f"- 预约：{reservation_label(it.get('reservation'))}")
             tags = [t for t in _json_list(it.get("tags")) if isinstance(t, str)]
             if tags:
                 lines.append(f"- 标签：{' / '.join(tags)}")
