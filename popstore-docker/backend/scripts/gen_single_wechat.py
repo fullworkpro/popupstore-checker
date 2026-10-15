@@ -201,6 +201,51 @@ def uploadimg(token: str, data: bytes, filename: str) -> str:
     return r["url"]
 
 
+# 微信素材只认 bmp/png/jpeg/gif；图床/CDN 常返回 webp（URL 后缀却还是 .jpg），
+# 直接上传会被拒：40113 unsupported file type / 40137 invalid image format。
+WX_IMAGE_FORMATS = {"JPEG", "PNG", "BMP", "GIF"}
+# 下载时显式声明优先 jpeg/png，让支持内容协商的图床别返回 webp
+IMG_FETCH_HEADERS = {"Accept": "image/jpeg,image/png,image/*;q=0.8,*/*;q=0.5"}
+
+
+def fetch_image(url: str, timeout: int = 60) -> bytes:
+    """下载图片（带内容协商头，尽量避免拿到 webp）"""
+    return requests.get(url, timeout=timeout, headers=IMG_FETCH_HEADERS).content
+
+
+def ensure_uploadable(data: bytes, filename: str):
+    """按【实际内容】判断格式，把微信不支持的（webp 等）转成 JPEG，后缀同步改掉。
+
+    只看 URL 后缀不可靠——图床常常见到 `.jpg` 后缀实际是 webp。
+    转换失败时按原样返回，不阻断整条推送链路。
+    返回 (bytes, filename)。
+    """
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+
+        im = Image.open(BytesIO(data))
+        fmt = (im.format or "").upper()
+        if fmt in WX_IMAGE_FORMATS:
+            return data, filename
+        im.load()
+        if im.mode in ("RGBA", "LA", "P"):
+            im = im.convert("RGBA")
+            bg = Image.new("RGB", im.size, (255, 255, 255))
+            bg.paste(im, mask=im.split()[-1])
+            im = bg
+        elif im.mode != "RGB":
+            im = im.convert("RGB")
+        buf = BytesIO()
+        im.save(buf, "JPEG", quality=92)
+        print(f"  [转码] {fmt or '未知'} -> JPEG（{filename}）")
+        return buf.getvalue(), os.path.splitext(filename)[0] + ".jpg"
+    except Exception as e:  # noqa: BLE001
+        print(f"  [提示] 图片格式检查/转换失败（{e}），按原样上传")
+        return data, filename
+
+
 def collect_images(store, token=None):
     """返回 [(url, bytes|None)]：upload 模式下把外链换成微信 URL"""
     urls = [u for u in _json_list(store.get("images")) if isinstance(u, str) and u]
@@ -209,8 +254,9 @@ def collect_images(store, token=None):
     out = []
     for i, u in enumerate(urls):
         if token:
-            data = requests.get(u, timeout=60).content
-            wx_url = uploadimg(token, data, f"cover{i}.jpg")
+            data = fetch_image(u)
+            data, fname = ensure_uploadable(data, f"cover{i}.jpg")
+            wx_url = uploadimg(token, data, fname)
             print(f"  [传图] {i + 1}/{len(urls)} -> {wx_url[:72]}…")
             out.append(wx_url)
         else:

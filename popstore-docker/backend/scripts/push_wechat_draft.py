@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from clean_noise_drafts import _req, login, DATA_DIR  # noqa: E402
 from gen_single_wechat import (  # noqa: E402
     MP_NAME, QRCODE, get_access_token, render_md, render_single, uploadimg,
-    qrcode_bytes_for,
+    qrcode_bytes_for, fetch_image, ensure_uploadable,
 )
 from gen_weekly_wechat import parse_dt, pick_city_group  # noqa: E402
 from gen_weekly_wechat import render_html as render_weekly_html  # noqa: E402
@@ -128,12 +128,20 @@ def build_article(store, wx: str, date_tag: str, light: bool, url_link: str = ""
         if not upload:  # dry-run：不上传、不落盘，正文保留外链
             wx_urls.append(u)
             continue
-        data = requests.get(u, timeout=60).content
+        data = fetch_image(u)
+        # 按内容识别格式：图床可能返回 webp（后缀仍是 .jpg），微信会拒收
+        data, fn = ensure_uploadable(data, fn)
         archive_local(date_tag, fn, data)
-        if light:
-            wx_urls.append(uploadimg(wx, data, fn))
-        else:
-            wx_urls.append(upload_permanent_image(wx, data, fn))
+        try:
+            if light:
+                wx_urls.append(uploadimg(wx, data, fn))
+            else:
+                wx_urls.append(upload_permanent_image(wx, data, fn))
+        except SystemExit as e:
+            # 单张图失败不该拖垮整篇推文：跳过它，正文里保留原外链兜底
+            print(f"  [跳过] 第 {i + 1} 张图上传失败：{e}")
+            wx_urls.append(u)
+            continue
         print(f"  [传图] {i + 1}/{len(urls)} {fn}")
 
     qrcode_src = None
@@ -170,7 +178,8 @@ def build_article(store, wx: str, date_tag: str, light: bool, url_link: str = ""
         }, md, content
 
     if urls:
-        cover = requests.get(urls[0], timeout=60).content
+        cover = fetch_image(urls[0])
+        cover, _ = ensure_uploadable(cover, "cover.jpg")
     elif os.path.exists(QRCODE):
         with open(QRCODE, "rb") as f:
             cover = f.read()
@@ -276,12 +285,18 @@ def main():
         raw = [(s.get("cover_image") or "") for s in picked[:12]]
         raw = [u for u in raw if u]
         for i, u in enumerate(raw):
-            data = requests.get(u, timeout=60).content
+            data = fetch_image(u)
             fn = f"{date_tag}_weekly_{i + 1}.jpg"
+            data, fn = ensure_uploadable(data, fn)
             archive_local(date_tag, fn, data)
-            wx_url = uploadimg(wx, data, fn) if args.light else upload_permanent_image(wx, data, fn)
-            content = content.replace(u, wx_url)
-        cover = requests.get(raw[0], timeout=60).content if raw else None
+            try:
+                wx_url = uploadimg(wx, data, fn) if args.light else upload_permanent_image(wx, data, fn)
+                content = content.replace(u, wx_url)
+            except SystemExit as e:
+                print(f"  [跳过] 周报第 {i + 1} 张图上传失败：{e}")
+        cover = fetch_image(raw[0]) if raw else None
+        if cover is not None:
+            cover, _ = ensure_uploadable(cover, "cover.jpg")
         if cover is None and os.path.exists(QRCODE):
             with open(QRCODE, "rb") as f:
                 cover = f.read()

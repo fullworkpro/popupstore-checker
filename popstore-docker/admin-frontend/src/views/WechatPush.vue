@@ -80,10 +80,12 @@
     <!-- 已发布店铺 -->
     <el-card>
       <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
-        <el-input v-model="keyword" placeholder="搜索标题..." clearable style="width:220px" />
+        <el-input v-model="keyword" placeholder="搜索标题（跨页）..." clearable style="width:220px" />
         <el-checkbox v-model="onlyUnpushed">只看未推送</el-checkbox>
         <el-button @click="load">刷新列表</el-button>
-        <span style="font-size:12px;color:#909399">共 {{ filtered.length }} 条（状态=已发布）</span>
+        <span style="font-size:12px;color:#909399">
+          共 {{ total }} 条已发布<template v-if="onlyUnpushed">，本页筛出 {{ filtered.length }} 条</template>
+        </span>
       </div>
 
       <el-table ref="tableRef" :data="filtered" stripe v-loading="loading"
@@ -115,6 +117,18 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <el-pagination
+        style="margin-top:12px;display:flex;justify-content:flex-end"
+        background
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="total"
+        :page-sizes="[20, 50, 100]"
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        @current-change="load"
+        @size-change="onSizeChange"
+      />
     </el-card>
 
     <StorePreview v-model:visible="previewVisible" :store="previewStore" />
@@ -122,7 +136,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { getStores, getWechatStatus, getWechatTask, pushWechatDraft } from '../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import StorePreview from '../components/StorePreview.vue'
@@ -136,6 +150,9 @@ const tableRef = ref(null)
 
 const keyword = ref('')
 const onlyUnpushed = ref(false)
+const page = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
 const light = ref(false)
 const urlLink = ref('')
 const weeklyDays = ref(7)
@@ -158,13 +175,10 @@ const taskTagType = computed(() => ({
   running: 'warning', success: 'success', error: 'danger', stale: 'info', idle: 'info',
 }[task.value.status] || 'info'))
 
+// 关键词已交给后端做跨页搜索，这里只保留依赖本地状态的「只看未推送」
 const filtered = computed(() => {
-  const kw = keyword.value.trim().toLowerCase()
-  return list.value.filter((s) => {
-    if (onlyUnpushed.value && pushed.value[s.id]) return false
-    if (kw && !(s.title || '').toLowerCase().includes(kw)) return false
-    return true
-  })
+  if (!onlyUnpushed.value) return list.value
+  return list.value.filter((s) => !pushed.value[s.id])
 })
 
 // 一次群发最多 8 篇
@@ -187,11 +201,32 @@ const loadStatus = async () => {
 const load = async () => {
   loading.value = true
   try {
-    const { data } = await getStores({ status: 'published', page: 1, page_size: 100 })
+    const { data } = await getStores({
+      status: 'published',
+      page: page.value,
+      page_size: pageSize.value,
+      keyword: keyword.value.trim() || undefined,
+    })
     list.value = data.items || []
+    total.value = data.total || 0
   } finally {
     loading.value = false
   }
+}
+
+// 搜索防抖：关键词变化回到第 1 页再查（后端做跨页搜索）
+let kwTimer = null
+watch(keyword, () => {
+  clearTimeout(kwTimer)
+  kwTimer = setTimeout(() => {
+    page.value = 1
+    load()
+  }, 300)
+})
+
+const onSizeChange = () => {
+  page.value = 1
+  load()
 }
 
 // ── 任务轮询 ──
