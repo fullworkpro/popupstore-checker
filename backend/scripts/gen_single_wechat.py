@@ -35,6 +35,10 @@ from gen_weekly_wechat import (  # noqa: E402
 
 ASSETS = os.path.join(DATA_DIR, "assets")
 QRCODE = os.path.join(ASSETS, "xcx-qrcode.png")
+# 静态码兜底：随代码打包进镜像（app/assets/）。NAS 的 data 卷会盖住 data/assets，
+# 所以镜像内必须自带一份；data/assets 若有人工放置的文件则优先用人工的。
+APP_ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app", "assets")
+QRCODE_BUNDLED = os.path.join(APP_ASSETS, "xcx-qrcode.png")
 CRED = os.path.join(DATA_DIR, ".wechat_mp")
 UPLOAD_LIMIT_MB = 10
 
@@ -156,9 +160,11 @@ def qrcode_bytes_for(store_id=None):
         got = store_wxacode(store_id)
         if got:
             return got[0], got[1], True
-    if os.path.exists(QRCODE):
-        with open(QRCODE, "rb") as f:
-            return f.read(), os.path.splitext(QRCODE)[1].lstrip(".") or "png", False
+    qr_path = QRCODE if os.path.exists(QRCODE) else (
+        QRCODE_BUNDLED if os.path.exists(QRCODE_BUNDLED) else None)
+    if qr_path:
+        with open(qr_path, "rb") as f:
+            return f.read(), os.path.splitext(qr_path)[1].lstrip(".") or "png", False
     return None
 
 
