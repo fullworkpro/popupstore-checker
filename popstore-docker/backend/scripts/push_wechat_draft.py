@@ -32,6 +32,7 @@ from clean_noise_drafts import _req, login, DATA_DIR  # noqa: E402
 from gen_single_wechat import (  # noqa: E402
     MP_NAME, QRCODE, get_access_token, render_md, render_single, uploadimg,
     qrcode_bytes_for, fetch_image, ensure_uploadable,
+    reuse_image_url, remember_image_url,
 )
 from gen_weekly_wechat import parse_dt, pick_city_group  # noqa: E402
 from gen_weekly_wechat import render_html as render_weekly_html  # noqa: E402
@@ -65,6 +66,10 @@ def slug(s: str, n=10) -> str:
 
 def upload_permanent_image(token: str, data: bytes, filename: str) -> str:
     """永久素材（可在素材库按文件名管理），返回微信 URL"""
+    cached = reuse_image_url(token, filename)
+    if cached:
+        print(f"  [复用] {filename}（素材库已有，跳过上传）")
+        return cached
     r = requests.post(
         f"https://api.weixin.qq.com/cgi-bin/material/add_material?access_token={token}&type=image",
         files={"media": (filename, data)},
@@ -80,11 +85,20 @@ def upload_permanent_image(token: str, data: bytes, filename: str) -> str:
         ).json()
         if "url" not in r2:
             raise SystemExit(f"图片上传失败: {r} / {r2}")
+        remember_image_url(filename, r2["url"])
         return r2["url"]
+    remember_image_url(filename, r["url"])
     return r["url"]
 
 
+_THUMB_CACHE = {}
+
+
 def upload_thumb(token: str, data: bytes, filename="thumb.jpg") -> str:
+    """封面缩略图（type=thumb）。同一次运行内同名只传一次。"""
+    if filename in _THUMB_CACHE:
+        print(f"  [复用] 封面 {filename}")
+        return _THUMB_CACHE[filename]
     r = requests.post(
         f"https://api.weixin.qq.com/cgi-bin/material/add_material?access_token={token}&type=thumb",
         files={"media": (filename, data)},
@@ -92,6 +106,7 @@ def upload_thumb(token: str, data: bytes, filename="thumb.jpg") -> str:
     ).json()
     if "media_id" not in r:
         raise SystemExit(f"封面上传失败: {r}")
+    _THUMB_CACHE[filename] = r["media_id"]
     return r["media_id"]
 
 

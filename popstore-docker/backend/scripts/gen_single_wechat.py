@@ -194,7 +194,62 @@ def generate_urllink(store_id, days=365):
     return r["url_link"]
 
 
+# ── 素材复用（v1.4.28）：避免「跑一半失败 → 修好后重跑」把同一张图传两遍 ──
+# 永久素材文件名形如 261016_标题slug_1.jpg，重跑同源推文时文件名不变，
+# 因此可以先回扫素材库、命中同名就直接用它的 URL，不再重复上传占配额。
+_MATERIAL_IMAGES = None
+_MATERIAL_SCAN_MAX = 400  # 只回扫最近 400 条，足够覆盖近几次推送
+WX_REUSE_MATERIAL = (os.environ.get("WX_REUSE_MATERIAL", "1") or "1") not in ("0", "false", "False")
+
+
+def material_image_index(token: str, refresh: bool = False):
+    """返回 {文件名: 微信URL}；拉取失败时返回空索引（退化为照常上传）。"""
+    global _MATERIAL_IMAGES
+    if _MATERIAL_IMAGES is not None and not refresh:
+        return _MATERIAL_IMAGES
+    idx = {}
+    off = 0
+    while off < _MATERIAL_SCAN_MAX:
+        try:
+            r = requests.post(
+                f"https://api.weixin.qq.com/cgi-bin/material/batchget_material?access_token={token}",
+                json={"type": "image", "offset": off, "count": 20},
+                timeout=40,
+            ).json()
+        except Exception:  # noqa: BLE001
+            break
+        items = r.get("item") or []
+        for it in items:
+            if it.get("name") and it.get("url") and it["name"] not in idx:
+                idx[it["name"]] = it["url"]
+        if len(items) < 20:
+            break
+        off += len(items)
+    _MATERIAL_IMAGES = idx
+    return idx
+
+
+def reuse_image_url(token: str, filename: str):
+    """同名素材已存在则返回其 URL，否则 None。"""
+    if not WX_REUSE_MATERIAL or not filename:
+        return None
+    try:
+        return material_image_index(token).get(filename)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def remember_image_url(filename: str, url: str):
+    """上传成功后登记，避免同一次运行内重复传同一文件名。"""
+    if _MATERIAL_IMAGES is not None and filename and url:
+        _MATERIAL_IMAGES[filename] = url
+
+
 def uploadimg(token: str, data: bytes, filename: str) -> str:
+    cached = reuse_image_url(token, filename)
+    if cached:
+        print(f"  [复用] {filename}（素材库已有，跳过上传）")
+        return cached
     if len(data) > UPLOAD_LIMIT_MB * 1024 * 1024:
         raise SystemExit(f"图片 {filename} 超过 {UPLOAD_LIMIT_MB}MB，先压缩再传")
     r = requests.post(
@@ -204,6 +259,7 @@ def uploadimg(token: str, data: bytes, filename: str) -> str:
     ).json()
     if "url" not in r:
         raise SystemExit(f"uploadimg 失败: {r}")
+    remember_image_url(filename, r["url"])
     return r["url"]
 
 
