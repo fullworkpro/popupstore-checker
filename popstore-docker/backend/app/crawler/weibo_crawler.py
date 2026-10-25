@@ -10,23 +10,39 @@ B. 全站关键词搜索（备选）：对二次元 IP 关键词（龙珠/原神
 若配置了有效 uid 的账号 → 走 A；否则 → 走 B。
 """
 
+import hashlib
 import json
 import logging
+import os
 import random
 import re
 import time
 from datetime import datetime, timedelta
+from http.cookiejar import LWPCookieJar
 from typing import List, Dict, Optional, Tuple
 from urllib.parse import quote
 
 import requests
 from bs4 import BeautifulSoup
+from requests.cookies import RequestsCookieJar, create_cookie
 from sqlalchemy.orm import Session
 
 from app.crawler.base_crawler import BaseCrawler
 from app.core.config import settings
 
 logger = logging.getLogger("crawler.weibo")
+
+# ── Cookie 持久化（v1.4.29）──────────────────────────────────────────────
+# 微博的登录票据（SUB/SUBP/ALF…）是「滑动过期」：浏览器每次访问页面都会收到
+# Set-Cookie 把有效期往后延，所以常年在线。旧版把 Cookie 写死在 headers["Cookie"]
+# 里，服务端下发的 Set-Cookie 被完全丢弃 → 撑到硬过期（约 5 天）就失效。
+# 这里改为用 CookieJar 承载 + 落盘回写，爬虫也能像浏览器一样自动续期。
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))), "data")
+COOKIE_JAR_PATH = os.environ.get("WEIBO_COOKIE_JAR", os.path.join(DATA_DIR, ".weibo_cookiejar"))
+COOKIE_FP_PATH = os.path.join(DATA_DIR, ".weibo_cookie_fingerprint")
+# 这些域都要带上：m.weibo.cn 取内容、passport/s.weibo.com 领访客票
+COOKIE_DOMAINS = (".weibo.cn", ".weibo.com")
 
 # IP / 作品名别名词典：把「标题 + 账号名」归一成标准作品名做标签。
 # 只放作品名（如「初音未来」），不再塞「快闪」「二次元」这类通用词和厂商名。
@@ -549,6 +565,7 @@ class WeiboCrawler(BaseCrawler):
         self._last_req_ts = 0.0  # 上次发请求的时间戳（用于间隔控制）
         self._auto_sub = False    # 是否成功自动获取了访客 SUB（用于 ok=-100 诊断）
         self._manual_cookie = False  # 是否使用了后台手填的 Cookie（v1.4.9，用于诊断区分）
+        self._manual_ck = ""      # 本次使用的手填 Cookie 原文（用于续期指纹匹配）
         self.session = requests.Session()
         self.session.headers.update({
             "User-Agent": settings.CRAWLER_USER_AGENT,
@@ -624,16 +641,96 @@ class WeiboCrawler(BaseCrawler):
             logger.warning("[weibo] 自动获取访客 SUB 失败: %s", e)
             return None
 
+    # ── 网络：Cookie 持久化 / 自动续期（v1.4.29）──
+    @staticmethod
+    def _jar_from_string(ck: str):
+        """把浏览器复制的一整串 Cookie 解析成 CookieJar（无 domain 信息，按域名列表补齐）"""
+        jar = LWPCookieJar()
+        for pair in (ck or "").split(";"):
+            pair = pair.strip()
+            if not pair or "=" not in pair:
+                continue
+            name, _, val = pair.partition("=")
+            name, val = name.strip(), val.strip()
+            if not name:
+                continue
+            for d in COOKIE_DOMAINS:
+                jar.set_cookie(create_cookie(name, val, domain=d, path="/"))
+        return jar
+
+    def _load_cookie_jar(self, ck: str):
+        """取本次要用的 Jar：手填串没变就沿用上次落盘的那份（里面是续期过的新票），
+        串变了（用户在后台更新了 Cookie）则以新串重建。"""
+        fp = hashlib.md5((ck or "").encode("utf-8")).hexdigest()
+        if os.path.exists(COOKIE_JAR_PATH) and os.path.exists(COOKIE_FP_PATH):
+            try:
+                if open(COOKIE_FP_PATH, encoding="utf-8").read().strip() == fp:
+                    jar = LWPCookieJar()
+                    jar.load(COOKIE_JAR_PATH, ignore_discard=True, ignore_expires=True)
+                    logger.info("[weibo] 凭证：沿用已续期的 CookieJar（%s）", COOKIE_JAR_PATH)
+                    return jar
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[weibo] CookieJar 读取失败，以手填串重建: %s", e)
+        return self._jar_from_string(ck)
+
+    def _save_cookie_jar(self, ck: str) -> None:
+        """把本次运行过程中服务端通过 Set-Cookie 下发的刷新票落盘，实现滑动续期。"""
+        if not self._manual_cookie or ck is None:
+            return
+        try:
+            os.makedirs(os.path.dirname(COOKIE_JAR_PATH), exist_ok=True)
+            jar = LWPCookieJar()
+            for c in self.session.cookies:
+                cp = create_cookie(c.name, c.value or "", domain=c.domain or ".weibo.cn",
+                                   path=c.path or "/", expires=c.expires, secure=c.secure)
+                jar.set_cookie(cp)
+            jar.save(COOKIE_JAR_PATH, ignore_discard=True, ignore_expires=True)
+            with open(COOKIE_FP_PATH, "w", encoding="utf-8") as f:
+                f.write(hashlib.md5(ck.encode("utf-8")).hexdigest())
+            logger.info("[weibo] Cookie 已自动续期并写回 %s", COOKIE_JAR_PATH)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[weibo] Cookie 续期写回失败（不影响本次抓取）: %s", e)
+
+    def _drop_cookie_jar(self) -> None:
+        """登录态已失效：丢掉旧 Jar，下次以手填串为准重新开始。"""
+        for p in (COOKIE_JAR_PATH, COOKIE_FP_PATH):
+            try:
+                if os.path.exists(p):
+                    os.remove(p)
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _probe_login(self) -> Optional[bool]:
+        """登录态自检 + 保活：GET m.weibo.cn/api/config，顺便让服务端下发刷新票。
+
+        返回 True=已登录 / False=票据失效 / None=请求失败（无法判定）。
+        """
+        try:
+            self._throttle()
+            r = self.session.get("https://m.weibo.cn/api/config", timeout=20)
+            data = (r.json() or {}).get("data") or {}
+            return bool(data.get("login"))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[weibo] 登录态探活失败（网络/WAF）: %s", e)
+            return None
+
     def _apply_manual_cookie(self) -> bool:
-        """使用后台填写的（登录态）Cookie 作为唯一凭证。返回是否应用成功。"""
+        """使用后台填写的（登录态）Cookie 作为唯一凭证。返回是否应用成功。
+
+        v1.4.29：改为灌进 CookieJar（而非 headers["Cookie"]），这样服务端响应的
+        Set-Cookie 才能被 requests 吸收，运行结束统一落盘 → 下次继续用刷新过的票据。
+        """
         ck = (self.cookie or "").strip()
         if not ck:
             return False
-        self.session.cookies.clear()
-        self.session.headers["Cookie"] = ck
+        self.session.headers.pop("Cookie", None)
+        self.session.cookies = RequestsCookieJar()
+        for c in self._load_cookie_jar(ck):
+            self.session.cookies.set_cookie(c)
+        self._manual_ck = ck
         self._auto_sub = False
         self._manual_cookie = True
-        logger.info("[weibo] 凭证：使用后台填写的微博 Cookie（登录态，读时间线/搜索权限最高）")
+        logger.info("[weibo] 凭证：使用后台填写的微博 Cookie（登录态，会自动续期）")
         return True
 
     def _apply_visitor_sub(self) -> bool:
@@ -1002,11 +1099,28 @@ class WeiboCrawler(BaseCrawler):
 
         # 凭证选择（v1.4.9）：后台填写的登录态 Cookie 优先，未填时才自动领访客 SUB。
         # 领凭证失败不再整轮中止——可能手填 Cookie 仍可用，也可能后面只是零命中。
+        login_ok: Optional[bool] = None
         try:
             self._ensure_visitor_sub()
         except Exception as e:  # noqa: BLE001
             errors.append(f"[credential] {e}")
             logger.error("[weibo] 凭证准备失败，继续尝试抓取: %s", e)
+
+        # 登录态自检 + 保活（v1.4.29）：浏览器之所以长期在线，就是因为每次访问都在触发
+        # 服务端下发刷新票；这里补上同一件事——打一次轻量接口让票据滑动续期。
+        if self._manual_cookie:
+            login_ok = self._probe_login()
+            if login_ok is True:
+                logger.info("[weibo] 登录态自检：正常（本次已触发票据续期）")
+            elif login_ok is False:
+                errors.append("[cookie] 登录态失效（data.login=false），请重新从 m.weibo.cn 复制整串 Cookie")
+                logger.error(
+                    "[weibo] ⚠️ 手填 Cookie 已失效（api/config 返回 login=false）。"
+                    "爬虫每次运行会自动续期，但若超过数天未跑、IP 变动、"
+                    "或同一串 Cookie 在多台机器（本机 + NAS）并发使用被风控踢下线，就会到这里。"
+                    "处理：在爬虫页重新粘贴 Cookie；并尽量只用一处机器跑。"
+                )
+                self._drop_cookie_jar()
 
         # 模式选择（v1.3.1：两种模式各自独立开关，可同时启用）：
         #   ① 账号监控(UID)  —— 优先级最高，先跑；其命中在去重时先入为主。
@@ -1104,6 +1218,8 @@ class WeiboCrawler(BaseCrawler):
             logger.exception("[weibo] 抓取流程异常中断，已抓到的部分仍会入库: %s", e)
         finally:
             added += _drain()
+            # Cookie 滑动续期：把本次服务端下发的刷新票落盘，下次继续用（模拟浏览器行为）
+            self._save_cookie_jar(getattr(self, "_manual_ck", "") or "")
 
         # ok=-100 诊断：区分「访客 SUB 也未生效（出口 IP 被 WAF 拦）/ 已用访客 SUB 仍被限流」
         if any("ok!=-100" in e for e in errors):
@@ -1178,6 +1294,9 @@ class WeiboCrawler(BaseCrawler):
         diag = (f"[诊断] 窗口 {since:%m-%d %H:%M} ~ {until:%m-%d %H:%M}"
                 f"（回看 {self.lookback_days} 天）｜{len(hit_stats)} 个目标｜命中：{hits_txt}"
                 f"｜入库 {added} 条")
+        if self._manual_cookie:
+            login_txt = {True: "已登录", False: "❌已失效，需复制新 Cookie", None: "未知(探活失败)"}[login_ok]
+            diag += f"｜登录态：{login_txt}"
         _err_txt = "\n".join(errors)
         error_detail = f"{diag}\n{_err_txt}" if _err_txt else diag
 

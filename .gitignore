@@ -19,6 +19,8 @@ popstore-docker.zip
 # 用 **/ 通配，保证 popstore-docker 部署副本下的同名文件同样不入库
 **/data/.admin_password
 **/data/.weibo_cookie
+**/data/.weibo_cookiejar
+**/data/.weibo_cookie_fingerprint
 **/data/.wechat_mp
 **/data/.wechat_pushed.json
 **/data/.wechat_task.json

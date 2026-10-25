@@ -9,7 +9,8 @@
   2) 未填 Cookie → 自动领访客 SUB 生效
   3) 两者都无 → 返回 False，裸请求
   4) 空白字符串视为未填
-  5) 手填生效时 cookie jar 被清空，headers["Cookie"] 唯一权威
+  5) 手填生效时用 CookieJar 承载（v1.4.29 起），不再写 headers["Cookie"]，
+     这样服务端 Set-Cookie 的续期票才能被吸收；旧的手填串优先规则不变
 """
 import os
 import sys
@@ -55,8 +56,14 @@ ck = "SUB=_2Axxx; SUBP=0033yyy"
 c = make(ck, visitor_ret=("sub_auto", "subp_auto"))
 ok = c._ensure_visitor_sub()
 check("返回 True", ok is True)
-check("headers 里是手填 Cookie", c.session.headers.get("Cookie") == ck,
-      f"got={c.session.headers.get('Cookie')!r}")
+# v1.4.29：手填 Cookie 改为灌进 CookieJar（滑动续期需要），headers 里不再留 Cookie
+check("headers 里不再放 Cookie", "Cookie" not in c.session.headers)
+sub_vals = {x.value for x in c.session.cookies if x.name == "SUB"}
+check("jar 里有手填的 SUB", sub_vals == {"_2Axxx"}, f"got={sub_vals}")
+check("jar 里有手填的 SUBP",
+      {x.value for x in c.session.cookies if x.name == "SUBP"} == {"0033yyy"})
+check("往一个入口域名时 SUB 会被带上",
+      c.session.cookies.get("SUB", domain=".weibo.cn") == "_2Axxx")
 check("未调用 genvisitor2", c.visited == [], f"visited={c.visited}")
 check("_manual_cookie=True", c._manual_cookie is True)
 check("_auto_sub=False", c._auto_sub is False)
@@ -87,12 +94,12 @@ ok = c._ensure_visitor_sub()
 check("返回 True", ok is True)
 check("走了访客分支", c._auto_sub is True and c._manual_cookie is False)
 
-print("== 5) 手填生效时清空 cookie jar ==")
+print("== 5) 手填生效时覆盖 jar（旧票不残留）==")
 c = make(ck, visitor_ret=("sub_auto", "subp_auto"))
 c.session.cookies.set("SUB", "old_value", domain=".weibo.com")
 c._ensure_visitor_sub()
-check("jar 已清空", len(list(c.session.cookies)) == 0,
-      f"jar={[(x.name, x.value) for x in c.session.cookies]}")
+vals = {x.value for x in c.session.cookies if x.name == "SUB"}
+check("旧的手填票已不存在", vals == {"_2Axxx"}, f"vals={vals}")
 
 print(f"\n结果: PASS={PASS} FAIL={FAIL}")
 sys.exit(1 if FAIL else 0)
