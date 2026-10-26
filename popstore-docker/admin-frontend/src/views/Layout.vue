@@ -2,7 +2,6 @@
   <el-container style="min-height:100vh">
     <el-aside width="220px" style="background:#304156">
       <div class="logo">
-        <span style="font-size:20px">🎌</span>
         <span style="margin-left:8px;font-weight:bold">PopStore 后台</span>
       </div>
       <el-menu

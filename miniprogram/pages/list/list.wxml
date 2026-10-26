@@ -63,7 +63,7 @@
       data-id="{{item.id}}"
     >
       <image wx:if="{{item.cover}}" src="{{item.cover}}" mode="aspectFill" class="card-img" />
-      <view wx:else class="card-img card-img--empty">🎌</view>
+      <view wx:else class="card-img card-img--empty">POP</view>
       <!-- 快闪类型徽章：浮在封面右上角，一眼区分联名快闪/特展/联名餐厅 -->
       <view class="card-type" wx:if="{{item.typeLabel}}">{{item.typeLabel}}</view>
       <view class="card-info">

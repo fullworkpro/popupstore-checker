@@ -22,7 +22,7 @@
     </swiper-item>
   </swiper>
   <image wx:elif="{{store.cover_image}}" src="{{store.cover_image}}" mode="aspectFit" class="hero-img" bindtap="openViewer" data-src="{{store.cover_image}}" />
-  <view wx:else class="hero-placeholder">🎌</view>
+  <view wx:else class="hero-placeholder">POP</view>
 
   <!-- 内容 -->
   <view class="content">

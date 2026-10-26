@@ -99,7 +99,7 @@
       style="border-left:8rpx solid {{item.color}}"
     >
       <image wx:if="{{item.cover}}" src="{{item.cover}}" mode="aspectFill" class="card-img" />
-      <view wx:else class="card-img card-img--empty">🎌</view>
+      <view wx:else class="card-img card-img--empty">POP</view>
       <view class="card-info">
         <text class="card-title">{{item.title}}</text>
         <text class="card-desc" wx:if="{{item.cityText}}">📍 {{item.cityText}}</text>

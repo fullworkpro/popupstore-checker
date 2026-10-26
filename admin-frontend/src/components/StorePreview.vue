@@ -19,7 +19,7 @@
               :src="imgs[idx]"
               style="width:100%;height:100%;object-fit:cover;display:block"
             />
-            <div v-else class="hero-ph">🎌</div>
+            <div v-else class="hero-ph">POP</div>
 
             <template v-if="imgs.length > 1">
               <div class="nav prev" @click="prev">‹</div>

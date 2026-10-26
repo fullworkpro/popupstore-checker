@@ -7,10 +7,10 @@ from typing import List, Optional
 class Settings(BaseSettings):
     # ── 应用基础 ──
     APP_NAME: str = "PopStore Platform"
-    APP_VERSION: str = "1.4.29"
+    APP_VERSION: str = "1.4.30"
     # 部署标签：每次有意义的改动请手动 +1（如 2026-08-27-qiniu-admin-v1）。
     # 用于 /api/v1/version 接口与前端 /version.json 比对，确认 NAS 跑的是不是最新代码。
-    APP_DEPLOY_TAG: str = "2026-10-26-cookie-auto-renew-v1.4.29"
+    APP_DEPLOY_TAG: str = "2026-10-26-remove-flag-emoji-v1.4.30"
     DEBUG: bool = True
 
     # ── 数据库 ──

@@ -376,8 +376,8 @@ Page({
     // 空态文案带上当前筛选条件，避免用户误以为「没有数据」
     const label = this.data.filterLabel
     const emptyText = selectedDate
-      ? selectedDate + ' 这天没有符合条件的快闪店 🎌（' + label + '）'
-      : '本月暂无符合条件的快闪店 🎌（' + label + '）'
+      ? selectedDate + ' 这天没有符合条件的快闪店（' + label + '）'
+      : '本月暂无符合条件的快闪店（' + label + '）'
 
     // 翻页边界：最小「上一个月」(-1)，最大「下两个月」(+2)
     const offset = this._monthOffset()
