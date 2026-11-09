@@ -36,6 +36,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { formatCN } from '../utils/datetime'
 import { getDashboard } from '../api'
 
 const stats = ref({})
@@ -63,5 +64,5 @@ const statusType = (s) => ({
 const statusLabel = (s) => ({
   published: '已发布', draft: '待审核', archived: '已归档', rejected: '已驳回',
 }[s] || s)
-const formatDate = (d) => d ? new Date(d).toLocaleString('zh-CN') : '-'
+const formatDate = (d) => formatCN(d)
 </script>

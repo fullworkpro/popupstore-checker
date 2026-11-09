@@ -22,6 +22,20 @@ def utc_naive_to_cn_iso(dt):
     return dt.astimezone(CN_TZ).isoformat()
 
 
+def cn_naive_to_cn_iso(dt):
+    """把「本来就是北京时间、只是丢了 tzinfo 的朴素时间」补上 +08:00。
+
+    容器 TZ=Asia/Shanghai，爬虫运行态 last_run_at / last_success_at 用
+    datetime.now() 写入，值是北京时间的字面值（不是 UTC）。这类字段不能走
+    utc_naive_to_cn_iso（会凭空多 8 小时），只需附加时区标记。
+    """
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=CN_TZ)
+    return dt.astimezone(CN_TZ).isoformat()
+
+
 class StoreStatus(str, enum.Enum):
     DRAFT = "draft"
     PUBLISHED = "published"
@@ -124,8 +138,8 @@ class Store(Base):
             "status": self.status,
             "view_count": self.view_count,
             "share_count": self.share_count,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": utc_naive_to_cn_iso(self.created_at),
+            "updated_at": utc_naive_to_cn_iso(self.updated_at),
         }
 
 
@@ -175,10 +189,11 @@ class CrawlerState(Base):
     def to_dict(self) -> dict:
         return {
             "source": self.source,
-            "last_success_at": self.last_success_at.isoformat() if self.last_success_at else None,
-            "last_run_at": self.last_run_at.isoformat() if self.last_run_at else None,
+            # last_* 由 datetime.now() 写入（容器 TZ=Asia/Shanghai），是北京时间字面值
+            "last_success_at": cn_naive_to_cn_iso(self.last_success_at),
+            "last_run_at": cn_naive_to_cn_iso(self.last_run_at),
             "last_error": self.last_error,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "updated_at": utc_naive_to_cn_iso(self.updated_at),
         }
 
 
@@ -241,6 +256,6 @@ class CrawlerConfig(Base):
             "has_douyin_cookie": bool(self.douyin_cookie),
             "schedule": _j(self.schedule, ["02:00", "13:00"]),
             "lookback_days": self.lookback_days,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": utc_naive_to_cn_iso(self.created_at),
+            "updated_at": utc_naive_to_cn_iso(self.updated_at),
         }

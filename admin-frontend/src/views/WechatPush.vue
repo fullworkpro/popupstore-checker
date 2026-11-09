@@ -70,7 +70,7 @@
         <el-tag :type="taskTagType" effect="dark">{{ taskLabel }}</el-tag>
         <span style="font-size:13px;color:#606266">{{ task.message || '' }}</span>
         <span style="font-size:12px;color:#909399">
-          {{ task.started_at || '' }}<span v-if="task.finished_at"> → {{ task.finished_at }}</span>
+          {{ formatCN(task.started_at, '') }}<span v-if="task.finished_at"> → {{ formatCN(task.finished_at) }}</span>
         </span>
         <el-button size="small" :loading="running" @click="loadStatus">刷新</el-button>
       </div>
@@ -137,6 +137,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { formatCN } from '../utils/datetime'
 import { getStores, getWechatStatus, getWechatTask, pushWechatDraft } from '../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import StorePreview from '../components/StorePreview.vue'

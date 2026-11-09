@@ -207,6 +207,7 @@
 
 <script setup>
 import { ref, reactive, onMounted, nextTick, watch } from 'vue'
+import { formatCN } from '../utils/datetime'
 import { getStores, deleteStore, reviewStore, getCities, importJsonStores } from '../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import StorePreview from '../components/StorePreview.vue'
@@ -432,5 +433,5 @@ const statusType = (s) => ({
 const statusLabel = (s) => ({
   published: '已发布', draft: '待审核', archived: '已归档', rejected: '已驳回',
 }[s] || s)
-const formatDate = (d) => d ? new Date(d).toLocaleString('zh-CN') : '-'
+const formatDate = (d) => formatCN(d)
 </script>

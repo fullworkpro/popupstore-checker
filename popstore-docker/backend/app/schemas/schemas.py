@@ -4,7 +4,9 @@ from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 import re
 
-from app.models.store import STORE_TYPE_VALUES, DEFAULT_STORE_TYPE, store_type_label
+from app.models.store import (
+    STORE_TYPE_VALUES, DEFAULT_STORE_TYPE, store_type_label, utc_naive_to_cn_iso,
+)
 
 # 纯日期 YYYY-MM-DD 检测（前端日期选择器回传的格式）
 _DATE_ONLY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -141,6 +143,18 @@ class StoreResponse(StoreBase):
             return v
         return store_type_label(values.get("store_type") or DEFAULT_STORE_TYPE)
 
+    @field_serializer("created_at", "updated_at", "reviewed_at")
+    @classmethod
+    def _timestamp_cn(cls, v):
+        """这三个时间戳以 UTC 朴素时间落库（DateTime 列会丢 tzinfo）。
+
+        不补时区直接输出 ISO，前端 new Date() 会按浏览器本地时区解析，
+        表现为「创建时间显示成 GMT、比实际慢 8 小时」。与 CrawlLogResponse
+        保持同一口径：统一转成带 +08:00 的北京时间 ISO 串。
+        注意 start_date / end_date 是纯日期（活动档期），不能套用此转换。
+        """
+        return utc_naive_to_cn_iso(v)
+
 
 class StoreListResponse(BaseModel):
     items: List[StoreResponse]
@@ -176,11 +190,7 @@ class CrawlLogResponse(BaseModel):
         """crawl_logs.created_at 存的是 UTC 朴素时间（SQLAlchemy DateTime 会丢掉 tzinfo），
         直接吐给前端会被浏览器按本地时区解析成「慢 8 小时」。
         这里统一补上 +08:00，前端显示即为北京时间。"""
-        if v is None:
-            return None
-        if v.tzinfo is None:
-            v = v.replace(tzinfo=timezone.utc)
-        return v.astimezone(timezone(timedelta(hours=8))).isoformat()
+        return utc_naive_to_cn_iso(v)
 
 
 class CrawlLogListResponse(BaseModel):

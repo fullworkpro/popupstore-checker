@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_admin
 from app.core.database import get_db
 from app.models.admin import Admin
-from app.models.store import Store, StoreStatus
+from app.models.store import Store, StoreStatus, CN_TZ as _CN_TZ
 from app.schemas.schemas import StoreResponse
 
 router = APIRouter(prefix="/admin/wechat", tags=["公众号推送"])
@@ -259,7 +259,7 @@ def push(payload: PushRequest, db: Session = Depends(get_db),
         _state = {
             "status": "running",
             "message": "dry-run：只生成产物，不建草稿" if payload.dry_run else "正在转存图片并创建草稿…",
-            "started_at": datetime.now().isoformat(timespec="seconds"),
+            "started_at": datetime.now(_CN_TZ).isoformat(timespec="seconds"),
             "finished_at": None,
             "returncode": None,
             "cmd": " ".join(cmd[1:]),
@@ -287,7 +287,7 @@ def push(payload: PushRequest, db: Session = Depends(get_db),
                     **_state,
                     "status": "success" if ok else "error",
                     "message": msg,
-                    "finished_at": datetime.now().isoformat(timespec="seconds"),
+                    "finished_at": datetime.now(_CN_TZ).isoformat(timespec="seconds"),
                     "returncode": rc,
                     "log": log,
                 }

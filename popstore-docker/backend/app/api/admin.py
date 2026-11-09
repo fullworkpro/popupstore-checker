@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.models.store import (
     Store, StoreStatus, CrawlLog, CrawlerState, CrawlerConfig,
-    DEFAULT_STORE_TYPE, STORE_TYPE_VALUES,
+    DEFAULT_STORE_TYPE, STORE_TYPE_VALUES, cn_naive_to_cn_iso,
 )
 from app.models.admin import Admin
 from app.api.deps import get_current_admin
@@ -370,8 +370,10 @@ def _build_crawler_status(db: Session) -> dict:
         .first()
     )
     data = cfg.to_dict()
-    data["last_success_at"] = state.last_success_at.isoformat() if state and state.last_success_at else None
-    data["last_run_at"] = state.last_run_at.isoformat() if state and state.last_run_at else None
+    # 运行态由 datetime.now() 写入（容器 TZ=Asia/Shanghai），是北京时间字面值，
+    # 只能补 +08:00 标记，不能按 UTC 转换，否则会凭空多 8 小时。
+    data["last_success_at"] = cn_naive_to_cn_iso(state.last_success_at) if state else None
+    data["last_run_at"] = cn_naive_to_cn_iso(state.last_run_at) if state else None
     data["last_error"] = state.last_error if state else ""
     data["pending_weibo_draft"] = draft_weibo
     data["last_log"] = last_log.to_dict() if last_log else None

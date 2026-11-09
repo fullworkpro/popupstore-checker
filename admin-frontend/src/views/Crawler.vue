@@ -58,7 +58,13 @@
     <el-card class="block">
       <template #header>
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <span>① UID 账号监控（首选，优先级最高）</span>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span>① UID 账号监控（首选，优先级最高）</span>
+            <el-tag type="info" size="small">{{ form.weibo_accounts.length }} 个账号</el-tag>
+            <el-link type="primary" :underline="false" @click="uidExpanded = !uidExpanded">
+              {{ uidExpanded ? '收起' : '展开' }}
+            </el-link>
+          </div>
           <el-switch
             v-model="form.weibo_uid_enabled"
             active-text="启用"
@@ -77,13 +83,15 @@
           <el-form label-width="120px">
             <el-form-item label="监控账号">
               <div style="width:100%">
-                <div v-for="(acc, i) in form.weibo_accounts" :key="i" class="row">
-                  <el-input v-model="form.weibo_accounts[i].name" placeholder="账号显示名，如 良笑goodsmile"
-                    style="width:240px" :disabled="!form.weibo_uid_enabled" />
-                  <el-input v-model="form.weibo_accounts[i].uid" placeholder="数字 UID（主页 /u/ 后的数字）"
-                    style="width:240px;margin-left:8px" :disabled="!form.weibo_uid_enabled" />
-                  <el-button type="danger" text @click="form.weibo_accounts.splice(i,1)"
-                    style="margin-left:8px" :disabled="!form.weibo_uid_enabled">删除</el-button>
+                <div class="scroll-list">
+                  <div v-for="(acc, i) in form.weibo_accounts" :key="i" class="row">
+                    <el-input v-model="form.weibo_accounts[i].name" placeholder="账号显示名，如 良笑goodsmile"
+                      style="width:240px" :disabled="!form.weibo_uid_enabled" />
+                    <el-input v-model="form.weibo_accounts[i].uid" placeholder="数字 UID（主页 /u/ 后的数字）"
+                      style="width:240px;margin-left:8px" :disabled="!form.weibo_uid_enabled" />
+                    <el-button type="danger" text @click="form.weibo_accounts.splice(i,1)"
+                      style="margin-left:8px" :disabled="!form.weibo_uid_enabled">删除</el-button>
+                  </div>
                 </div>
                 <el-button @click="form.weibo_accounts.push({name:'',uid:''})" :disabled="!form.weibo_uid_enabled">
                   + 添加账号
@@ -99,9 +107,14 @@
         </div>
       </el-collapse-transition>
       <div v-if="!uidExpanded" class="collapsed-hint">
-        <el-tag type="info" size="small">已停用并折叠（内容保留、不可编辑）</el-tag>
+        <el-tag :type="form.weibo_uid_enabled ? 'success' : 'info'" size="small">
+          {{ form.weibo_uid_enabled ? '已启用' : '已停用' }}
+        </el-tag>
+        <span style="color:#909399;margin-left:10px">
+          已折叠 {{ form.weibo_accounts.length }} 个账号（配置保留{{ form.weibo_uid_enabled ? '' : '、暂不可编辑' }}）
+        </span>
         <el-link type="primary" :underline="false" style="margin-left:12px" @click="uidExpanded = true">
-          展开查看
+          展开查看 / 编辑
         </el-link>
       </div>
     </el-card>
@@ -110,7 +123,13 @@
     <el-card class="block">
       <template #header>
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <span>② 全站关键词搜索（补充，优先级次于 UID）</span>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span>② 全站关键词搜索（补充，优先级次于 UID）</span>
+            <el-tag type="info" size="small">{{ form.weibo_keywords.length }} 个关键词</el-tag>
+            <el-link type="primary" :underline="false" @click="keywordExpanded = !keywordExpanded">
+              {{ keywordExpanded ? '收起' : '展开' }}
+            </el-link>
+          </div>
           <el-switch
             v-model="form.weibo_keyword_enabled"
             active-text="启用"
@@ -129,11 +148,13 @@
           <el-form label-width="150px">
             <el-form-item label="二次元 IP 关键词">
               <div style="width:100%">
-                <div v-for="(kw, i) in form.weibo_keywords" :key="i" class="row">
-                  <el-input v-model="form.weibo_keywords[i]" placeholder="如 龙珠 / 原神 / 鸣潮 / chiikawa"
-                    style="width:260px" :disabled="!form.weibo_keyword_enabled" />
-                  <el-button type="danger" text @click="form.weibo_keywords.splice(i,1)"
-                    style="margin-left:8px" :disabled="!form.weibo_keyword_enabled">删除</el-button>
+                <div class="scroll-list">
+                  <div v-for="(kw, i) in form.weibo_keywords" :key="i" class="row">
+                    <el-input v-model="form.weibo_keywords[i]" placeholder="如 龙珠 / 原神 / 鸣潮 / chiikawa"
+                      style="width:260px" :disabled="!form.weibo_keyword_enabled" />
+                    <el-button type="danger" text @click="form.weibo_keywords.splice(i,1)"
+                      style="margin-left:8px" :disabled="!form.weibo_keyword_enabled">删除</el-button>
+                  </div>
                 </div>
                 <el-button @click="form.weibo_keywords.push('')" :disabled="!form.weibo_keyword_enabled">
                   + 添加关键词
@@ -154,9 +175,14 @@
         </div>
       </el-collapse-transition>
       <div v-if="!keywordExpanded" class="collapsed-hint">
-        <el-tag type="info" size="small">已停用并折叠（关键词保留、不可编辑）</el-tag>
+        <el-tag :type="form.weibo_keyword_enabled ? 'success' : 'info'" size="small">
+          {{ form.weibo_keyword_enabled ? '已启用' : '已停用' }}
+        </el-tag>
+        <span style="color:#909399;margin-left:10px">
+          已折叠 {{ form.weibo_keywords.length }} 个关键词（配置保留{{ form.weibo_keyword_enabled ? '' : '、暂不可编辑' }}）
+        </span>
         <el-link type="primary" :underline="false" style="margin-left:12px" @click="keywordExpanded = true">
-          展开查看
+          展开查看 / 编辑
         </el-link>
       </div>
     </el-card>
@@ -299,6 +325,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { formatCN } from '../utils/datetime'
 import { getCrawlerConfig, updateCrawlerConfig, runWeiboCrawler, getCrawlLogs } from '../api'
 import { ElMessage } from 'element-plus'
 
@@ -330,17 +357,13 @@ const logs = ref([])
 const logPage = ref(1)
 const logPageSize = ref(20)
 const logTotal = ref(0)
-// 折叠态：开关关闭 → 折叠；开启 → 展开
-const uidExpanded = ref(true)
+// 折叠态与启停开关解耦：列表越来越长，默认折叠，由用户点「展开」才展开；
+// 保存配置后仍保持用户当前的展开/收起状态，不会被开关状态覆盖。
+const uidExpanded = ref(false)
 const keywordExpanded = ref(false)
 
-// 后端返回的时间可能带 +08:00 也可能不带，这里统一按北京时间渲染，避免显示成 GMT
-const fmt = (d) => {
-  if (!d) return ''
-  const dt = new Date(d)
-  if (Number.isNaN(dt.getTime())) return String(d)
-  return dt.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })
-}
+// 后端时间戳统一输出 +08:00；历史无时区值按北京时间字面值兜底
+const fmt = (d) => formatCN(d, '')
 // 微信爬虫已于 v1.4.16 移除（搜狗微信搜索停服、无实际抓取能力），此处仅为历史日志保留标签
 const sourceLabel = (s) => ({ wechat:'微信(已下线)', xiaohongshu:'小红书', weibo:'微博', douyin:'抖音', crawler:'爬虫' }[s] || s)
 
@@ -362,9 +385,6 @@ const loadConfig = async () => {
     form.xhs_cookie = data.has_xhs_cookie ? '********' : ''
     form.douyin_enabled = data.douyin_enabled
     form.douyin_cookie = data.has_douyin_cookie ? '********' : ''
-    // 折叠态跟随开关：启用即展开，停用即折叠（内容保留，不清空）
-    uidExpanded.value = form.weibo_uid_enabled
-    keywordExpanded.value = form.weibo_keyword_enabled
   } finally {
     loading.value = false
   }
@@ -383,14 +403,12 @@ const fetchLogs = async () => {
 
 const loadAll = () => { loadConfig(); fetchLogs() }
 
-// 开关：启用即展开、停用即折叠，并立即持久化开关状态（不改动已配置内容）
-const onUidToggle = (val) => {
-  uidExpanded.value = val
+// 开关只负责启停与持久化，不再强制改变折叠态（避免每次刷新都被长列表刷屏）
+const onUidToggle = () => {
   saveAccounts()
 }
 
 const onKeywordToggle = (val) => {
-  keywordExpanded.value = val
   if (val && form.weibo_keywords.length === 0) {
     form.weibo_keywords.push('')  // 由停用切到启用且无关键词时，预填一行方便编辑
   }
@@ -486,4 +504,6 @@ onMounted(loadAll)
 .block { margin-bottom: 20px; }
 .row { display:flex; align-items:center; margin-bottom:8px; }
 .collapsed-hint { display:flex; align-items:center; padding:4px 0; }
+/* 账号/关键词列表可能很长：展开后限高滚动，「+ 添加」按钮始终可见 */
+.scroll-list { max-height: 420px; overflow-y: auto; padding-right: 6px; }
 </style>
